@@ -1,9 +1,9 @@
 #python main.py - для запуска локального сайта в терминале PyCharm или cmd
 #http://127.0.0.1:8000/docs - интерактивная документация
 #Ip и порт будет показан в терминале или cmd
+
 import uuid
 from datetime import datetime
-
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -32,6 +32,7 @@ class VisitorData(BaseModel):
     people_count: int
 
 visitor_submissions = []
+flag = bool
 
 @app.post("/submit-visit-info", tags=["Клиент"], summary="Информации заявки")
 async def submit_visit_info(data: VisitorData):
@@ -81,5 +82,17 @@ async def mark_table_completed(table_number: int):
     ]
     return {"message": f"Столик {table_number} обслужен"}
 
+@app.post("/startflag")
+def start_session():
+    global flag
+    flag = True
+    return flag
+
+@app.post("/stopflag")
+def stop_session():
+    global flag
+    flag = False
+    return flag
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", reload=True)
+    uvicorn.run("main:app", host="26.234.56.246", port=8000, reload=True)
