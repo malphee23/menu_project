@@ -5,6 +5,7 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, EmailStr
+from sqlalchemy.ext.asyncio import create_async_engine, async_session
 
 app = FastAPI()
 
