@@ -1,6 +1,6 @@
-#python main.py - для запуска локального сайта в терминале PyCharm или cmd
-#http://127.0.0.1:8000/docs - интерактивная документация
-#Ip и порт будет показан в терминале или cmd
+# python main.py - для запуска локального сайта в терминале PyCharm или cmd
+# http://127.0.0.1:8000/docs - интерактивная документация
+# Ip и порт будет показан в терминале или cmd
 
 import uuid
 from datetime import datetime
@@ -9,10 +9,26 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 
+from starlette.middleware.cors import CORSMiddleware
+
+from admin import admin_router
+
 app = FastAPI(
     title="Restaurant API",
     description="API for restaurant service",
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(admin_router)
+
+# ========== МОДЕЛИ ==========
 
 class VisitPurpose(BaseModel):
     purpose: str
@@ -25,19 +41,57 @@ class DietaryRestrictions(BaseModel):
     allergies: List[str]
 
 class VisitorData(BaseModel):
-    table_number: int  # Номер столика
+    table_number: int
     visit_purpose: VisitPurpose
     taste_preferences: Optional[TastePreferences] = None
     dietary_restrictions: Optional[DietaryRestrictions] = None
     people_count: int
 
+# ========== ХРАНИЛИЩА ==========
+
 visitor_submissions = []
-flag = bool
+session_flags = {}
 
-@app.post("/submit-visit-info", tags=["Клиент"], summary="Информации заявки")
+# ========== СЕССИИ И ЗАКАЗЫ ==========
+
+@app.post("/startflag/{table_number}", tags=["Сессии"])
+def start_session(table_number: int):
+    session_flags[table_number] = True
+    return {
+        "success": True,
+        "message": f"Сессия для стола {table_number} начата",
+        "table_number": table_number,
+        "session_active": True
+    }
+
+@app.post("/stopflag/{table_number}", tags=["Сессии"])
+def stop_session(table_number: int):
+    session_flags[table_number] = False
+    return {
+        "success": True,
+        "message": f"Сессия для стола {table_number} завершена",
+        "table_number": table_number,
+        "session_active": False
+    }
+
+@app.get("/checkflag/{table_number}", tags=["Сессии"])
+def check_session(table_number: int):
+    is_active = session_flags.get(table_number, False)
+    return {
+        "table_number": table_number,
+        "session_active": is_active,
+        "message": f"Сессия {'активна' if is_active else 'не активна'}"
+    }
+
+@app.post("/submit-visit-info", tags=["Клиент"])
 async def submit_visit_info(data: VisitorData):
-    submission_id = str(uuid.uuid4())[:8]
+    if not session_flags.get(data.table_number, False):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Сессия для стола {data.table_number} не активна."
+        )
 
+    submission_id = str(uuid.uuid4())[:8]
     submission = {
         "id": submission_id,
         "table_number": data.table_number,
@@ -52,47 +106,12 @@ async def submit_visit_info(data: VisitorData):
 
     visitor_submissions.append(submission)
 
-    return{
+    return {
         "success": True,
         "message": "Ваш заказ принят, ожидайте",
         "table_number": data.table_number,
+        "order_id": submission_id
     }
-
-@app.get("/submissions", tags=["Персонал"], summary="Получить все заявки")
-async def get_all_submissions():
-    return{
-        "submissions": visitor_submissions,
-        "total": len(visitor_submissions),
-    }
-
-@app.get("/submissions/{table_number}", tags=["Персонал"], summary="Заявки определенного стола")
-async def get_table_submission(table_number: int):
-    table_subs = [s for s in visitor_submissions if s["table_number"] == table_number]
-    return{
-        "submissions": table_subs,
-    }
-
-@app.put("/complete/{table_number}", tags=["Персонал"], summary="Обнулить заказы определенного стола")
-async def mark_table_completed(table_number: int):
-    # Удаляем заявки этого столика
-    global visitor_submissions
-    visitor_submissions = [
-        s for s in visitor_submissions
-        if s["table_number"] != table_number
-    ]
-    return {"message": f"Столик {table_number} обслужен"}
-
-@app.post("/startflag")
-def start_session():
-    global flag
-    flag = True
-    return flag
-
-@app.post("/stopflag")
-def stop_session():
-    global flag
-    flag = False
-    return flag
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="26.234.56.246", port=8000, reload=True)
