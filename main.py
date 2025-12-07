@@ -9,9 +9,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 
-from starlette.middleware.cors import CORSMiddleware
-
+# Импортируем роутеры
+from mobile import mobile_router
 from admin import admin_router
+
+# Импортируем общее хранилище
+from storage import visitor_submissions, session_flags
+
+from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Restaurant API",
@@ -27,8 +32,7 @@ app.add_middleware(
 )
 
 app.include_router(admin_router)
-
-# ========== МОДЕЛИ ==========
+app.include_router(mobile_router)
 
 class VisitPurpose(BaseModel):
     purpose: str
@@ -47,12 +51,11 @@ class VisitorData(BaseModel):
     dietary_restrictions: Optional[DietaryRestrictions] = None
     people_count: int
 
-# ========== ХРАНИЛИЩА ==========
+# УБРАТЬ ЭТИ СТРОКИ (они теперь в storage.py):
+# visitor_submissions = []
+# session_flags = {}
 
-visitor_submissions = []
-session_flags = {}
-
-# ========== СЕССИИ И ЗАКАЗЫ ==========
+# Сессии и заказы
 
 @app.post("/startflag/{table_number}", tags=["Сессии"])
 def start_session(table_number: int):
