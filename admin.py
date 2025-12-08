@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import List, Optional
-from fastapi import HTTPException, Query, APIRouter
+from fastapi import HTTPException, Query, APIRouter, Depends, status
 from pydantic import BaseModel
 
-from storage import visitor_submissions, session_flags
+from storage import session_flags
 from database import db
 
 # Создаем роутер для админских эндпоинтов
@@ -12,6 +12,27 @@ admin_router = APIRouter(
     tags=["Админ"],
     responses={404: {"description": "Не найдено"}}
 )
+
+class AdminLoginRequest(BaseModel):
+    """Модель для входа администратора"""
+    login: str
+    password: str
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "login": "admin",
+                "password": "password123"
+            }
+        }
+    }
+
+class AdminLoginResponse(BaseModel):
+    """Модель ответа при входе администратора"""
+    token: str
+    role: str
+    user_id: int
+    login: str
 
 class AdminUserResponse(BaseModel):
     """Модель ответа для администратора"""
@@ -65,7 +86,6 @@ class UserFromDB(BaseModel):
     class Config:
         from_attributes = True
 
-
 class Category(BaseModel):
     """Модель категории"""
     id: Optional[int] = None
@@ -75,7 +95,6 @@ class Category(BaseModel):
     class Config:
         from_attributes = True
 
-
 class DishCreate(BaseModel):
     """Модель для создания блюда"""
     name: str
@@ -83,7 +102,6 @@ class DishCreate(BaseModel):
     price: float
     category_id: Optional[int] = None
     is_available: bool = True
-
 
 class DishResponse(BaseModel):
     """Модель ответа для блюда"""
@@ -98,7 +116,6 @@ class DishResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class DishUpdate(BaseModel):
     """Модель для обновления блюда"""
     name: Optional[str] = None
@@ -106,7 +123,6 @@ class DishUpdate(BaseModel):
     price: Optional[float] = None
     category_id: Optional[int] = None
     is_available: Optional[bool] = None
-
 
 class BarItemResponse(BaseModel):
     """Модель ответа для напитка"""
@@ -121,7 +137,6 @@ class BarItemResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class BarItemCreate(BaseModel):
     """Модель для создания напитка"""
     name: str
@@ -131,7 +146,6 @@ class BarItemCreate(BaseModel):
     strength: Optional[float] = None
     is_available: bool = True
 
-
 class BarItemUpdate(BaseModel):
     """Модель для обновления напитка"""
     name: Optional[str] = None
@@ -140,7 +154,6 @@ class BarItemUpdate(BaseModel):
     is_alcoholic: Optional[bool] = None
     strength: Optional[float] = None
     is_available: Optional[bool] = None
-
 
 class IngredientResponse(BaseModel):
     """Модель ответа для ингредиента"""
@@ -153,14 +166,12 @@ class IngredientResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class IngredientCreate(BaseModel):
     """Модель для создания ингредиента"""
     name: str
     unit: str
     current_stock: float = 0.0
     min_stock_level: float = 0.0
-
 
 class IngredientUpdate(BaseModel):
     """Модель для обновления ингредиента"""
@@ -169,6 +180,43 @@ class IngredientUpdate(BaseModel):
     current_stock: Optional[float] = None
     min_stock_level: Optional[float] = None
 
+@admin_router.post("/admins/login",
+                   response_model=AdminLoginResponse,
+                   summary="Вход администратора",
+                   description="Аутентификация администратора в системе")
+async def admin_login(login_data: AdminLoginRequest):
+    try:
+        # Проверяем учетные данные через БД
+        admin_data = db.verify_admin_password(login_data.login, login_data.password)
+
+        if not admin_data:
+            raise HTTPException(
+                status_code=401,
+                detail="Неверный логин или пароль"
+            )
+
+        # Генерируем токен (упрощенно, как в примере фронтенда)
+        import hashlib
+        import time
+
+        # Создаем токен на основе данных администратора
+        token_data = f"{admin_data['id']}:{admin_data['login']}:{admin_data['role']}:{time.time()}"
+        token = hashlib.sha256(token_data.encode()).hexdigest()
+
+        return {
+            "token": token,
+            "role": admin_data['role'],
+            "user_id": admin_data['id'],
+            "login": admin_data['login']
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при входе: {str(e)}"
+        )
 
 @admin_router.get("/admins",
                   response_model=List[AdminUserResponse],
