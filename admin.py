@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import HTTPException, Query, APIRouter, Depends, status
 from pydantic import BaseModel
+import hashlib
+import time
 
 from storage import session_flags
 from database import db
@@ -14,7 +16,6 @@ admin_router = APIRouter(
 )
 
 class AdminLoginRequest(BaseModel):
-    """Модель для входа администратора"""
     login: str
     password: str
 
@@ -28,14 +29,12 @@ class AdminLoginRequest(BaseModel):
     }
 
 class AdminLoginResponse(BaseModel):
-    """Модель ответа при входе администратора"""
     token: str
     role: str
     user_id: int
     login: str
 
 class AdminUserResponse(BaseModel):
-    """Модель ответа для администратора"""
     id: int
     login: str
     role: str
@@ -44,10 +43,9 @@ class AdminUserResponse(BaseModel):
         from_attributes = True
 
 class AdminUserCreate(BaseModel):
-    """Модель для создания пользователя системы"""
     login: str
-    password: str  # Открытый пароль
-    role: str = "waiter"  # По умолчанию официант
+    password: str
+    role: str = "waiter"
 
     model_config = {
         "json_schema_extra": {
@@ -60,23 +58,21 @@ class AdminUserCreate(BaseModel):
     }
 
 class AdminUserUpdate(BaseModel):
-    """Модель для обновления пользователя системы"""
     login: Optional[str] = None
-    password: Optional[str] = None  # Опционально, только если меняем пароль
+    password: Optional[str] = None
     role: Optional[str] = None
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "login": "updated_waiter",
-                "password": "newpassword456",  # Опционально
+                "password": "newpassword456",
                 "role": "waiter"  # Возможные значения: "superuser", "cook", "waiter"
             }
         }
     }
 
 class UserFromDB(BaseModel):
-    """Модель пользователя из БД"""
     id: Optional[int] = None
     login: Optional[str] = None
     birth_date: Optional[str] = None
@@ -87,7 +83,6 @@ class UserFromDB(BaseModel):
         from_attributes = True
 
 class Category(BaseModel):
-    """Модель категории"""
     id: Optional[int] = None
     name: str
     description: Optional[str] = None
@@ -96,7 +91,6 @@ class Category(BaseModel):
         from_attributes = True
 
 class DishCreate(BaseModel):
-    """Модель для создания блюда"""
     name: str
     description: Optional[str] = None
     price: float
@@ -104,7 +98,6 @@ class DishCreate(BaseModel):
     is_available: bool = True
 
 class DishResponse(BaseModel):
-    """Модель ответа для блюда"""
     id: int
     name: str
     description: Optional[str] = None
@@ -117,7 +110,6 @@ class DishResponse(BaseModel):
         from_attributes = True
 
 class DishUpdate(BaseModel):
-    """Модель для обновления блюда"""
     name: Optional[str] = None
     description: Optional[str] = None
     price: Optional[float] = None
@@ -125,7 +117,6 @@ class DishUpdate(BaseModel):
     is_available: Optional[bool] = None
 
 class BarItemResponse(BaseModel):
-    """Модель ответа для напитка"""
     id: int
     name: str
     description: Optional[str] = None
@@ -138,7 +129,6 @@ class BarItemResponse(BaseModel):
         from_attributes = True
 
 class BarItemCreate(BaseModel):
-    """Модель для создания напитка"""
     name: str
     description: Optional[str] = None
     price: float
@@ -147,7 +137,6 @@ class BarItemCreate(BaseModel):
     is_available: bool = True
 
 class BarItemUpdate(BaseModel):
-    """Модель для обновления напитка"""
     name: Optional[str] = None
     description: Optional[str] = None
     price: Optional[float] = None
@@ -156,7 +145,6 @@ class BarItemUpdate(BaseModel):
     is_available: Optional[bool] = None
 
 class IngredientResponse(BaseModel):
-    """Модель ответа для ингредиента"""
     id: int
     name: str
     unit: str
@@ -167,14 +155,12 @@ class IngredientResponse(BaseModel):
         from_attributes = True
 
 class IngredientCreate(BaseModel):
-    """Модель для создания ингредиента"""
     name: str
     unit: str
     current_stock: float = 0.0
     min_stock_level: float = 0.0
 
 class IngredientUpdate(BaseModel):
-    """Модель для обновления ингредиента"""
     name: Optional[str] = None
     unit: Optional[str] = None
     current_stock: Optional[float] = None
@@ -186,7 +172,7 @@ class IngredientUpdate(BaseModel):
                    description="Аутентификация администратора в системе")
 async def admin_login(login_data: AdminLoginRequest):
     try:
-        # Проверяем учетные данные через БД
+        # Проверка записей через бд
         admin_data = db.verify_admin_password(login_data.login, login_data.password)
 
         if not admin_data:
@@ -195,11 +181,6 @@ async def admin_login(login_data: AdminLoginRequest):
                 detail="Неверный логин или пароль"
             )
 
-        # Генерируем токен (упрощенно, как в примере фронтенда)
-        import hashlib
-        import time
-
-        # Создаем токен на основе данных администратора
         token_data = f"{admin_data['id']}:{admin_data['login']}:{admin_data['role']}:{time.time()}"
         token = hashlib.sha256(token_data.encode()).hexdigest()
 
@@ -230,21 +211,18 @@ async def get_all_admin_users():
         raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
 
-# 2. СОЗДАТЬ АДМИНА
 @admin_router.post("/admins",
                    response_model=AdminUserResponse,
                    summary="Создать нового пользователя системы",
                    description="Создает нового пользователя с правами superuser/cook/waiter")
 async def create_admin_user(admin: AdminUserCreate):
     try:
-        # Базовая валидация
         if not admin.login or len(admin.login) < 3:
             raise HTTPException(status_code=400, detail="Логин должен быть не менее 3 символов")
 
         if not admin.password:
             raise HTTPException(status_code=400, detail="Пароль не может быть пустым")
 
-        # Проверяем допустимые роли
         valid_roles = ["superuser", "cook", "waiter"]
         if admin.role not in valid_roles:
             raise HTTPException(
@@ -252,7 +230,6 @@ async def create_admin_user(admin: AdminUserCreate):
                 detail=f"Роль должна быть одна из: {', '.join(valid_roles)}"
             )
 
-        # Подготавливаем данные для БД
         admin_data = {
             "login": admin.login,
             "password_hash": admin.password,
@@ -266,33 +243,26 @@ async def create_admin_user(admin: AdminUserCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
-
-# 3. ИЗМЕНИТЬ АДМИНА
 @admin_router.put("/admins/{admin_id}",
                   response_model=AdminUserResponse,
                   summary="Обновить пользователя системы",
                   description="Обновляет логин, пароль и/или роль пользователя")
 async def update_admin_user(admin_id: int, admin: AdminUserUpdate):
     try:
-        # Проверяем, что есть хотя бы одно поле для обновления
         update_data = admin.model_dump(exclude_unset=True, exclude_none=True)
         if not update_data:
             raise HTTPException(status_code=400, detail="Нет данных для обновления")
 
-        # Если меняем логин, проверяем минимальную длину
         if 'login' in update_data and update_data['login'] and len(update_data['login']) < 3:
             raise HTTPException(status_code=400, detail="Логин должен быть не менее 3 символов")
 
-        # Если меняем пароль, проверяем что он не пустой
         if 'password' in update_data and update_data['password']:
             password = update_data['password']
             if not password:
                 raise HTTPException(status_code=400, detail="Пароль не может быть пустой строкой")
             if len(password) < 3:
                 raise HTTPException(status_code=400, detail="Пароль должен быть не менее 3 символов")
-            # Не удаляем пароль из update_data - метод БД его обработает
 
-        # Если меняем роль, проверяем допустимые значения
         if 'role' in update_data and update_data['role']:
             valid_roles = ["superuser", "cook", "waiter"]
             if update_data['role'] not in valid_roles:
@@ -313,8 +283,6 @@ async def update_admin_user(admin_id: int, admin: AdminUserUpdate):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
-
-# 4. УДАЛИТЬ АДМИНА
 @admin_router.delete("/admins/{admin_id}",
                      summary="Удалить администратора",
                      description="Удаляет администратора по ID. Нельзя удалить последнего администратора.")
@@ -342,7 +310,6 @@ async def get_all_users():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
-
 @admin_router.delete("/users/{user_id}", summary="Удалить пользователя")
 async def delete_user(user_id: int):
     try:
@@ -359,7 +326,6 @@ async def delete_user(user_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
-
 @admin_router.get("/users/count", summary="Получить число пользователей")
 async def get_users_count():
     try:
@@ -372,8 +338,6 @@ async def get_users_count():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
-
-# ========== БЛЮДА ==========
 @admin_router.get("/dishes", response_model=List[DishResponse], summary="Получить все блюда")
 async def get_all_dishes(
         category_id: Optional[int] = Query(None, description="Фильтр по категории"),
@@ -385,14 +349,12 @@ async def get_all_dishes(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @admin_router.get("/dishes/{dish_id}", response_model=DishResponse, summary="Получить блюдо")
 async def get_dish(dish_id: int):
     dish = db.get_dish_by_id(dish_id)
     if not dish:
         raise HTTPException(status_code=404, detail="Блюдо не найдено")
     return dish
-
 
 @admin_router.post("/dishes", response_model=DishResponse, summary="Создать блюдо")
 async def create_dish(dish: DishCreate):
@@ -401,7 +363,6 @@ async def create_dish(dish: DishCreate):
         return created_dish
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 @admin_router.put("/dishes/{dish_id}", response_model=DishResponse, summary="Изменить блюдо")
 async def update_dish(dish_id: int, dish: DishUpdate):
@@ -414,7 +375,6 @@ async def update_dish(dish_id: int, dish: DishUpdate):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-
 @admin_router.delete("/dishes/{dish_id}", summary="Удалить блюдо")
 async def delete_dish(dish_id: int):
     success = db.delete_dish(dish_id)
@@ -422,8 +382,6 @@ async def delete_dish(dish_id: int):
         raise HTTPException(status_code=404, detail="Блюдо не найдено")
     return {"success": True, "message": f"Блюдо с ID {dish_id} удалено"}
 
-
-# ========== НАПИТКИ ==========
 @admin_router.get("/bar-items", response_model=List[BarItemResponse], summary="Получить все напитки")
 async def get_all_bar_items():
     try:
@@ -431,7 +389,6 @@ async def get_all_bar_items():
         return items
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @admin_router.get("/bar-items/{item_id}", response_model=BarItemResponse, summary="Получить напиток")
 async def get_bar_item(item_id: int):
@@ -505,11 +462,8 @@ async def get_complete_menu():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# ========== ИНГРЕДИЕНТЫ ==========
 @admin_router.get("/ingredients", response_model=List[IngredientResponse], summary="Получить все ингредиенты")
 async def get_all_ingredients():
-    """Получить все ингредиенты"""
     try:
         ingredients = db.get_all_ingredients()
         return ingredients
@@ -519,7 +473,6 @@ async def get_all_ingredients():
 
 @admin_router.post("/ingredients", response_model=IngredientResponse, summary="Создать ингредиент")
 async def create_ingredient(ingredient: IngredientCreate):
-    """Создать новый ингредиент"""
     try:
         created_ingredient = db.create_ingredient(ingredient.model_dump())
         return created_ingredient
@@ -529,7 +482,6 @@ async def create_ingredient(ingredient: IngredientCreate):
 
 @admin_router.put("/ingredients/{ingredient_id}", summary="Изменить ингредиент")
 async def update_ingredient(ingredient_id: int, ingredient: IngredientUpdate):
-    """Обновить ингредиент"""
     try:
         update_data = {k: v for k, v in ingredient.model_dump().items() if v is not None}
         updated_ingredient = db.update_ingredient(ingredient_id, update_data)
@@ -542,21 +494,17 @@ async def update_ingredient(ingredient_id: int, ingredient: IngredientUpdate):
 
 @admin_router.delete("/ingredients/{ingredient_id}", summary="Удалить ингредиент")
 async def delete_ingredient(ingredient_id: int):
-    """Удалить ингредиент"""
     success = db.delete_ingredient(ingredient_id)
     if not success:
         raise HTTPException(status_code=404, detail="Ингредиент не найден")
     return {"success": True, "message": f"Ингредиент с ID {ingredient_id} удален"}
 
-
-# ========== СИСТЕМНЫЕ ЭНДПОИНТЫ ==========
 @admin_router.get("/db/health", summary="Проверка соединения с бд")
 async def db_health_check():
     try:
         tables = db.get_all_tables()
         has_users_table = 'users' in tables
 
-        # Получаем информацию о файле БД
         import os
         from database import db as db_instance
 
@@ -572,7 +520,6 @@ async def db_health_check():
             "message": "Подключение к базе данных успешно"
         }
 
-        # Добавляем статистику
         db_info["users_count"] = db.get_users_count()
         db_info["dishes_count"] = db.get_dishes_count()
         db_info["bar_items_count"] = db.get_bar_items_count()
@@ -587,11 +534,8 @@ async def db_health_check():
             "message": "Ошибка подключения к базе данных"
         }
 
-
-# ========== ФУНКЦИИ ДЛЯ ПЕРСОНАЛА ==========
 @admin_router.get("/submissions", summary="Получить все заявки посетителей")
 async def get_all_submissions():
-    """Получить все заявки от посетителей"""
     return {
         "submissions": visitor_submissions,
         "total": len(visitor_submissions),
@@ -601,7 +545,6 @@ async def get_all_submissions():
 
 @admin_router.get("/submissions/{table_number}", summary="Получить заявку по номеру стола")
 async def get_table_submission(table_number: int):
-    """Получить заявки по номеру стола"""
     table_subs = [s for s in visitor_submissions if s["table_number"] == table_number]
     session_status = session_flags.get(table_number, False)
 
@@ -615,7 +558,6 @@ async def get_table_submission(table_number: int):
 
 @admin_router.get("/tables/status", summary="Получить статус всех столов")
 async def get_tables_status():
-    """Получить статус всех столов"""
     statuses = []
     all_tables = set([s["table_number"] for s in visitor_submissions])
 
@@ -641,15 +583,12 @@ async def get_tables_status():
 
 @admin_router.put("/complete/{table_number}", summary="Сделать стол обслуженным")
 async def mark_table_completed(table_number: int):
-    """Отметить стол как обслуженный"""
-    # Удаляем заявки для этого стола
     global visitor_submissions
     visitor_submissions = [
         s for s in visitor_submissions
         if s["table_number"] != table_number
     ]
 
-    # Завершаем сессию
     if table_number in session_flags:
         session_flags[table_number] = False
 

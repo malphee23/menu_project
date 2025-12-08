@@ -14,14 +14,11 @@ class Database:
         if not password:
             raise ValueError("Пароль не может быть пустым")
 
-        # Если соль не предоставлена, генерируем новую
         if not salt:
             salt = secrets.token_hex(16)
 
-        # Создаем хеш пароля + соль
         password_hash = hashlib.sha256(f"{password}{salt}".encode()).hexdigest()
 
-        # Возвращаем в формате хеш+соль
         return f"{password_hash}:{salt}"
 
     @staticmethod
@@ -30,31 +27,22 @@ class Database:
             return False
 
         try:
-            # Извлекаем хеш и соль из хранимой строки
             stored_hash, salt = stored_hash.split(":", 1)
 
-            # Хешируем введенный пароль с той же солью
             password_hash = hashlib.sha256(f"{password}{salt}".encode()).hexdigest()
 
-            # Сравниваем хеши
             return password_hash == stored_hash
         except:
             return False
 
     @staticmethod
     def _generate_password(length: int = 12) -> str:
-        """
-        Генерация случайного пароля
-        """
         import string
         alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
         return ''.join(secrets.choice(alphabet) for _ in range(length))
 
     @staticmethod
     def _check_password_strength(password: str) -> bool:
-        """
-        Проверка сложности пароля
-        """
         if len(password) < 8:
             return False
 
@@ -65,13 +53,6 @@ class Database:
         return has_lower and has_upper and has_digit
 
     def __init__(self, db_path: str = None):
-        """
-        Инициализация базы данных
-
-        Args:
-            db_path: путь к файлу SQLite (.db, .sqlite, .sqlite3)
-                     Если не указан, ищет существующий файл
-        """
         self.db_path = self._find_database_file(db_path)
         self.engine = None
         self.Session = None
@@ -79,12 +60,9 @@ class Database:
         self._init_database()
 
     def _find_database_file(self, user_path: str = None) -> str:
-        """Находит файл базы данных"""
-        # 1. Если пользователь указал путь
         if user_path:
             return user_path
 
-        # 2. Проверяем различные расширения в текущей директории
         possible_files = [
             "restaurant.db",
             "restaurant.sqlite",
@@ -99,29 +77,20 @@ class Database:
             if os.path.exists(file_name):
                 return file_name
 
-        # 3. Если ничего не нашли, используем restaurant.db по умолчанию
         return "restaurant.db"
 
     def _init_database(self):
-        """Инициализация подключения к БД"""
-
-        # Подключаемся к БД
         try:
-            # SQLAlchemy работает с любыми расширениями SQLite
             self.engine = create_engine(f"sqlite:///{self.db_path}")
             self.Session = sessionmaker(bind=self.engine)
 
-            # Проверяем соединение
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
 
         except Exception as e:
             raise
 
-    # === Адаптивные методы для проверки таблиц и колонок ===
-
     def _table_exists(self, table_name: str) -> bool:
-        """Проверяет существование таблицы"""
         try:
             inspector = inspect(self.engine)
             return table_name in inspector.get_table_names()
@@ -129,7 +98,6 @@ class Database:
             return False
 
     def _column_exists(self, table_name: str, column_name: str) -> bool:
-        """Проверяет существование колонки в таблице"""
         try:
             inspector = inspect(self.engine)
             columns = inspector.get_columns(table_name)
@@ -138,7 +106,6 @@ class Database:
             return False
 
     def _get_table_columns(self, table_name: str) -> List[str]:
-        """Получить список колонок таблицы"""
         try:
             inspector = inspect(self.engine)
             columns = inspector.get_columns(table_name)
@@ -146,10 +113,7 @@ class Database:
         except:
             return []
 
-    # ========== МЕТОДЫ ДЛЯ АДМИНИСТРАТОРОВ ==========
-
     def get_all_admin_users(self) -> List[Dict[str, Any]]:
-        """Получить всех администраторов"""
         try:
             if not self._table_exists('admin_users'):
                 return []
@@ -165,10 +129,8 @@ class Database:
             return []
 
     def create_admin_user(self, admin_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Создать нового администратора с хешированием пароля"""
         try:
             if not self._table_exists('admin_users'):
-                # Если таблицы нет, создаем ее
                 with self.engine.connect() as conn:
                     conn.execute(text("""
                         CREATE TABLE IF NOT EXISTS admin_users (
@@ -182,7 +144,6 @@ class Database:
                     conn.commit()
 
             with self.engine.connect() as conn:
-                # Проверяем уникальность логина
                 check_result = conn.execute(
                     text("SELECT id FROM admin_users WHERE login = :login"),
                     {"login": admin_data.get('login')}
@@ -190,15 +151,12 @@ class Database:
                 if check_result.fetchone():
                     raise ValueError(f"Администратор с логином '{admin_data.get('login')}' уже существует")
 
-                # Получаем пароль из данных (может быть под ключом password или password_hash)
                 password = admin_data.get('password', admin_data.get('password_hash', ''))
                 if not password:
                     raise ValueError("Пароль не может быть пустым")
 
-                # Хешируем пароль
                 hashed_password = self._hash_password(password)
 
-                # Создаем данные для вставки
                 insert_data = {
                     "login": admin_data.get('login'),
                     "password_hash": hashed_password,  # Сохраняем хеш
@@ -215,7 +173,6 @@ class Database:
                 conn.commit()
 
                 admin_id = result.lastrowid
-                # Возвращаем созданного админа без пароля
                 with self.engine.connect() as conn2:
                     result2 = conn2.execute(
                         text("SELECT id, login, role FROM admin_users WHERE id = :id"),
@@ -228,18 +185,16 @@ class Database:
                         "role": admin_data.get('role', 'admin')
                     }
         except ValueError as e:
-            raise  # Пробрасываем ошибку уникальности
+            raise
         except Exception as e:
             raise
 
     def update_admin_user(self, admin_id: int, admin_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Обновить администратора с хешированием пароля"""
         try:
             if not self._table_exists('admin_users'):
                 return None
 
             with self.engine.connect() as conn:
-                # Проверяем существование админа
                 check_result = conn.execute(
                     text("SELECT id FROM admin_users WHERE id = :id"),
                     {"id": admin_id}
@@ -247,7 +202,6 @@ class Database:
                 if not check_result.fetchone():
                     return None
 
-                # Если меняем логин, проверяем уникальность
                 if 'login' in admin_data and admin_data['login']:
                     check_login_result = conn.execute(
                         text("SELECT id FROM admin_users WHERE login = :login AND id != :id"),
@@ -256,10 +210,8 @@ class Database:
                     if check_login_result.fetchone():
                         raise ValueError(f"Администратор с логином '{admin_data['login']}' уже существует")
 
-                # Формируем данные для обновления
                 update_data = {k: v for k, v in admin_data.items() if v is not None}
                 if not update_data:
-                    # Возвращаем текущие данные если ничего не меняем
                     result = conn.execute(
                         text("SELECT id, login, role FROM admin_users WHERE id = :id"),
                         {"id": admin_id}
@@ -267,19 +219,15 @@ class Database:
                     row = result.fetchone()
                     return dict(row._mapping) if row else None
 
-                # ВАЖНОЕ ИСПРАВЛЕНИЕ: обрабатываем поле 'password' вместо 'password_hash'
                 if 'password' in update_data:
                     password = update_data['password']
-                    if password and password.strip():  # Проверяем что пароль не пустой
-                        # Хешируем новый пароль
+                    if password and password.strip():
+
                         update_data['password_hash'] = self._hash_password(password)
-                        # Удаляем ключ password
                         del update_data['password']
                     else:
-                        # Если пароль пустая строка - удаляем его из обновления
                         del update_data['password']
 
-                # Также обрабатываем поле 'password_hash' если оно пришло напрямую
                 elif 'password_hash' in update_data:
                     password = update_data['password_hash']
                     if password and password.strip():
@@ -287,9 +235,7 @@ class Database:
                     else:
                         del update_data['password_hash']
 
-                # Проверяем, остались ли данные для обновления
                 if not update_data:
-                    # Если все поля были пустыми (например, пустой пароль)
                     result = conn.execute(
                         text("SELECT id, login, role FROM admin_users WHERE id = :id"),
                         {"id": admin_id}
@@ -305,7 +251,6 @@ class Database:
                 conn.commit()
 
                 if result.rowcount > 0:
-                    # Возвращаем обновленные данные
                     result2 = conn.execute(
                         text("SELECT id, login, role FROM admin_users WHERE id = :id"),
                         {"id": admin_id}
@@ -314,20 +259,18 @@ class Database:
                     return dict(row._mapping) if row else None
                 return None
         except ValueError as e:
-            raise  # Пробрасываем ошибку уникальности
+            raise
         except Exception as e:
             import traceback
             traceback.print_exc()
             raise
 
     def delete_admin_user(self, admin_id: int) -> bool:
-        """Удалить администратора"""
         try:
             if not self._table_exists('admin_users'):
                 return False
 
             with self.engine.connect() as conn:
-                # Проверяем, не пытаемся ли удалить последнего админа
                 count_result = conn.execute(text("SELECT COUNT(*) FROM admin_users"))
                 total_admins = count_result.scalar() or 0
 
@@ -343,14 +286,9 @@ class Database:
         except ValueError as e:
             raise  # Пробрасываем ошибку
         except Exception as e:
-            print(f"❌ Ошибка при удалении администратора: {e}")
             return False
 
     def verify_admin_password(self, login: str, password: str) -> Optional[Dict[str, Any]]:
-        """
-        Проверить пароль администратора
-        Возвращает данные админа если пароль верный
-        """
         try:
             if not self._table_exists('admin_users'):
                 return None
@@ -368,26 +306,20 @@ class Database:
                 admin_data = dict(row._mapping)
                 stored_hash = admin_data.pop('password_hash', '')
 
-                # Проверяем пароль
                 if self._verify_password(password, stored_hash):
                     return admin_data
                 else:
                     return None
 
         except Exception as e:
-            print(f"⚠️ Ошибка при проверке пароля: {e}")
             return None
 
     def change_admin_password(self, admin_id: int, old_password: str, new_password: str) -> bool:
-        """
-        Изменить пароль администратора с проверкой старого пароля
-        """
         try:
             if not self._table_exists('admin_users'):
                 return False
 
             with self.engine.connect() as conn:
-                # Получаем текущий хеш пароля
                 result = conn.execute(
                     text("SELECT password_hash FROM admin_users WHERE id = :id"),
                     {"id": admin_id}
@@ -399,14 +331,11 @@ class Database:
 
                 stored_hash = row[0]
 
-                # Проверяем старый пароль
                 if not self._verify_password(old_password, stored_hash):
                     return False
 
-                # Хешируем новый пароль
                 new_hashed_password = self._hash_password(new_password)
 
-                # Обновляем пароль
                 update_result = conn.execute(
                     text("UPDATE admin_users SET password_hash = :password_hash WHERE id = :id"),
                     {"id": admin_id, "password_hash": new_hashed_password}
@@ -416,13 +345,11 @@ class Database:
                 return update_result.rowcount > 0
 
         except Exception as e:
-            print(f"⚠️ Ошибка при смене пароля: {e}")
             return False
 
-    # ========== ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ==========
 
     def get_admin_user_by_id(self, admin_id: int) -> Optional[Dict[str, Any]]:
-        """Получить администратора по ID"""
+
         try:
             if not self._table_exists('admin_users'):
                 return None
@@ -435,11 +362,9 @@ class Database:
                 row = result.fetchone()
                 return dict(row._mapping) if row else None
         except Exception as e:
-            print(f"⚠️ Ошибка при получении администратора: {e}")
             return None
 
     def get_admin_users_count(self) -> int:
-        """Получить количество администраторов"""
         try:
             if not self._table_exists('admin_users'):
                 return 0
@@ -448,10 +373,8 @@ class Database:
                 result = conn.execute(text("SELECT COUNT(*) FROM admin_users"))
                 return result.scalar() or 0
         except Exception as e:
-            print(f"⚠️ Ошибка при получении количества администраторов: {e}")
             return 0
 
-    # ========== ОСТАЛЬНЫЕ МЕТОДЫ (остаются без изменений) ==========
 
     def get_all_users(self) -> List[Dict[str, Any]]:
         try:
@@ -491,7 +414,6 @@ class Database:
                 row = result.fetchone()
                 return dict(row._mapping) if row else None
         except Exception as e:
-            print(f"⚠️ Ошибка при получении пользователя: {e}")
             return None
 
     def delete_user(self, user_id: int) -> bool:
@@ -510,7 +432,6 @@ class Database:
             print(f"Ошибка при удалении пользователя: {e}")
             return False
 
-    # === Блюда ===
 
     def get_all_dishes(self, category_id: Optional[int] = None, available_only: bool = False) -> List[Dict[str, Any]]:
         try:
@@ -641,7 +562,7 @@ class Database:
                     return self.get_dish_by_id(dish_id)
                 return None
         except Exception as e:
-            print(f"❌ Ошибка при обновлении блюда: {e}")
+            print(f"Ошибка при обновлении блюда: {e}")
             raise
 
     def delete_dish(self, dish_id: int) -> bool:
@@ -657,7 +578,7 @@ class Database:
                 conn.commit()
                 return result.rowcount > 0
         except Exception as e:
-            print(f"❌ Ошибка при удалении блюда: {e}")
+            print(f"Ошибка при удалении блюда: {e}")
             return False
 
     # === Категории ===
@@ -716,10 +637,8 @@ class Database:
                     return item
                 return None
         except Exception as e:
-            print(f"❌ Ошибка при получении напитка: {e}")
+            print(f"Ошибка при получении напитка: {e}")
             return None
-
-    # === Ингредиенты ===
 
     def get_all_ingredients(self) -> List[Dict[str, Any]]:
         try:
@@ -738,7 +657,7 @@ class Database:
                     ingredients.append(ingredient)
                 return ingredients
         except Exception as e:
-            print(f"❌ Ошибка при получении ингредиентов: {e}")
+            print(f"Ошибка при получении ингредиентов: {e}")
             return []
 
     def create_ingredient(self, ingredient_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -784,10 +703,9 @@ class Database:
                         return ingredient
                 return ingredient_data
         except Exception as e:
-            print(f"❌ Ошибка при создании ингредиента: {e}")
+            print(f"Ошибка при создании ингредиента: {e}")
             raise
 
-    # === Общие методы ===
 
     def get_all_tables(self) -> List[str]:
         try:
@@ -829,5 +747,4 @@ class Database:
         except:
             return 0
 
-# Создаем глобальный экземпляр с автоопределением БД
 db = Database()

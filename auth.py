@@ -10,13 +10,11 @@ import jwt
 pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 class UserBase(BaseModel):
-    """Базовая модель пользователя"""
     username: str
     email: EmailStr
 
 
 class UserCreate(UserBase):
-    """Модель для регистрации"""
     password: str
     birth_date: str  # Формат: "YYYY-MM-DD"
 
@@ -30,33 +28,28 @@ class UserCreate(UserBase):
     def validate_password(cls, v):
         if len(v) < 3 or len(v) > 18:
             raise ValueError('Пароль должен быть от 3 до 18 символов')
-        # Дополнительная проверка на байты
         if len(v.encode('utf-8')) > 72:
             raise ValueError('Пароль слишком длинный (более 72 байт)')
         return v
 
 
 class UserLogin(BaseModel):
-    """Модель для входа"""
     username: str
     password: str
 
 
 class UserResponse(UserBase):
-    """Модель ответа с данными пользователя"""
     id: str
     birth_date: str
     created_at: str
 
 
 class Token(BaseModel):
-    """Модель токена"""
     access_token: str
     token_type: str
     user_id: str
     username: str
 
-# Хранилище пользователей
 users_db = {}
 
 SECRET_KEY = "your-secret-key-for-jwt-tokens"
@@ -64,10 +57,8 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 class AuthService:
-    """Сервис для работы с аутентификацией"""
     @staticmethod
     def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-        """Создание JWT токена"""
         to_encode = data.copy()
         if expires_delta:
             expire = datetime.now(timezone.utc) + expires_delta
@@ -80,25 +71,20 @@ class AuthService:
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Проверка пароля с хэшированием"""
         return pwd_context.verify(plain_password, hashed_password)
 
     @staticmethod
     def get_password_hash(password: str) -> str:
-        """Хэширование пароля"""
         return pwd_context.hash(password)
 
     @staticmethod
     def register_user(user_data: UserCreate) -> dict:
-        """Регистрация нового пользователя"""
-        # Проверяем уникальность username
         if user_data.username in users_db:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Пользователь с таким именем уже существует"
             )
 
-        # Проверяем уникальность email
         for user in users_db.values():
             if user['email'] == user_data.email:
                 raise HTTPException(
@@ -106,7 +92,6 @@ class AuthService:
                     detail="Пользователь с таким email уже существует"
                 )
 
-        # Создаём пользователя
         user_id = str(uuid.uuid4())
         hashed_password = AuthService.get_password_hash(user_data.password)
 
@@ -119,7 +104,6 @@ class AuthService:
             'created_at': datetime.now().isoformat()
         }
 
-        # Создаём токен
         access_token = AuthService.create_access_token(
             data={"sub": user_data.username, "user_id": user_id}
         )
@@ -133,7 +117,6 @@ class AuthService:
 
     @staticmethod
     def authenticate_user(username: str, password: str) -> Optional[dict]:
-        """Аутентификация пользователя"""
         if username not in users_db:
             return None
 
@@ -145,7 +128,6 @@ class AuthService:
 
     @staticmethod
     def login_user(login_data: UserLogin) -> dict:
-        """Вход пользователя"""
         user = AuthService.authenticate_user(login_data.username, login_data.password)
 
         if not user:
@@ -155,7 +137,6 @@ class AuthService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Создаём токен
         access_token = AuthService.create_access_token(
             data={"sub": user['username'], "user_id": user['id']}
         )
@@ -169,9 +150,7 @@ class AuthService:
 
     @staticmethod
     def get_current_user(token: str):
-        """Получение текущего пользователя по токену"""
         try:
-            # Убедитесь, что токен передаётся как строка
             if isinstance(token, bytes):
                 token = token.decode('utf-8')
 
@@ -213,7 +192,6 @@ class AuthService:
 
     @staticmethod
     def get_user_profile(username: str) -> dict:
-        """Получение профиля пользователя"""
         if username not in users_db:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -231,9 +209,7 @@ class AuthService:
 
     @staticmethod
     def get_all_users() -> list:
-        """Получение всех пользователей (для админа)"""
         return list(users_db.values())
 
 
-# Создаём экземпляр сервиса для импорта
 auth_service = AuthService()

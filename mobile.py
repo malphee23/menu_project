@@ -11,7 +11,6 @@ mobile_router = APIRouter(
 )
 
 
-# Модели для запросов
 class GuestData(BaseModel):
     category: str
     allergies: List[str] = []
@@ -28,12 +27,10 @@ class OrderUpdate(BaseModel):
 
 class MobileGuestHandler:
     def complete_guest_session(self, table_number: int) -> Dict[str, Any]:
-        """Завершить сессию гостя"""
         try:
             self.connect()
             cursor = self.conn.cursor()
 
-            # Обновляем статус заказов
             cursor.execute('''
                 UPDATE orders 
                 SET status = 'завершен' 
@@ -59,7 +56,6 @@ class MobileGuestHandler:
             self.disconnect()
 
     def get_visit_categories(self) -> List[Dict[str, Any]]:
-        """Получить категории посещений"""
         try:
             self.connect()
             cursor = self.conn.cursor()
@@ -76,12 +72,10 @@ class MobileGuestHandler:
         self.conn = None
 
     def connect(self):
-        """Подключение к базе данных"""
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
 
     def disconnect(self):
-        """Отключение от базы данных"""
         if self.conn:
             self.conn.close()
 
@@ -91,14 +85,11 @@ class MobileGuestHandler:
                           restrictions: List[str],
                           preferences: List[str],
                           table_number: int) -> Dict[str, Any]:
-        """
-        Создание записи гостя в базе данных
-        """
+
         try:
             self.connect()
             cursor = self.conn.cursor()
 
-            # Проверяем существует ли стол
             cursor.execute('SELECT id FROM tables WHERE table_number = ?', (table_number,))
             table_exists = cursor.fetchone()
 
@@ -109,15 +100,12 @@ class MobileGuestHandler:
                     "message": "Указанный стол не найден в системе"
                 }
 
-            # Преобразуем списки в строки для хранения
             allergies_str = ", ".join(allergies) if allergies else "Нет аллергии"
             restrictions_str = ", ".join(restrictions) if restrictions else "Нет ограничений"
             preferences_str = ", ".join(preferences) if preferences else "Любое"
 
-            # Генерируем уникальный временный логин для гостя
             guest_login = f"guest_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-            # Вставляем запись гостя
             cursor.execute('''
                 INSERT INTO users (login, password_hash, birth_date, diet_type, meal_style)
                 VALUES (?, ?, ?, ?, ?)
@@ -125,7 +113,6 @@ class MobileGuestHandler:
 
             user_id = cursor.lastrowid
 
-            # Создаем заказ/посещение для гостя
             cursor.execute('''
                 INSERT INTO orders (user_id, created_at, status, total_price, table_number)
                 VALUES (?, ?, ?, ?, ?)
@@ -162,7 +149,6 @@ class MobileGuestHandler:
             self.disconnect()
 
     def get_guest_by_table(self, table_number: int) -> List[Dict[str, Any]]:
-        """Получить информацию о гостях за столом"""
         try:
             self.connect()
             cursor = self.conn.cursor()
@@ -189,23 +175,19 @@ class MobileGuestHandler:
 
     def update_guest_order(self, order_id: int, dish_ids: List[int] = None,
                            bar_item_ids: List[int] = None) -> Dict[str, Any]:
-        """Обновить заказ гостя (добавить блюда/напитки)"""
         try:
             self.connect()
             cursor = self.conn.cursor()
 
             total_price = 0.0
 
-            # Добавляем блюда в заказ
             if dish_ids:
                 for dish_id in dish_ids:
-                    # Получаем цену блюда
                     cursor.execute('SELECT price FROM dishes WHERE id = ? AND is_available = 1', (dish_id,))
                     dish_row = cursor.fetchone()
                     if dish_row:
                         dish_price = dish_row[0]
 
-                        # Добавляем в order_items
                         cursor.execute('''
                             INSERT INTO order_items (order_id, dish_id, bar_item_id)
                             VALUES (?, ?, NULL)
@@ -213,16 +195,13 @@ class MobileGuestHandler:
 
                         total_price += dish_price
 
-            # Добавляем напитки в заказ
             if bar_item_ids:
                 for item_id in bar_item_ids:
-                    # Получаем цену напитка
                     cursor.execute('SELECT price FROM bar_items WHERE id = ? AND is_available = 1', (item_id,))
                     item_row = cursor.fetchone()
                     if item_row:
                         item_price = item_row[0]
 
-                        # Добавляем в order_items
                         cursor.execute('''
                             INSERT INTO order_items (order_id, dish_id, bar_item_id)
                             VALUES (?, NULL, ?)
@@ -230,7 +209,6 @@ class MobileGuestHandler:
 
                         total_price += item_price
 
-            # Обновляем общую стоимость заказа
             if total_price > 0:
                 cursor.execute('''
                     UPDATE orders 
@@ -259,7 +237,6 @@ class MobileGuestHandler:
             self.disconnect()
 
     def get_menu_dishes(self) -> List[Dict[str, Any]]:
-        """Получить доступные блюда для меню"""
         try:
             self.connect()
             cursor = self.conn.cursor()
@@ -282,7 +259,6 @@ class MobileGuestHandler:
             self.disconnect()
 
     def get_menu_drinks(self) -> List[Dict[str, Any]]:
-        """Получить доступные напитки для меню"""
         try:
             self.connect()
             cursor = self.conn.cursor()
@@ -303,13 +279,11 @@ class MobileGuestHandler:
             self.disconnect()
 
 
-# Создаем экземпляр обработчика
 guest_handler = MobileGuestHandler()
 
 
 @mobile_router.post("/guest/register", summary="Регистрация пользователя")
 async def register_guest(guest_data: GuestData):
-    """Регистрация гостя (вход без аккаунта)"""
     result = guest_handler.create_guest_user(
         category=guest_data.category,
         allergies=guest_data.allergies,
@@ -326,7 +300,6 @@ async def register_guest(guest_data: GuestData):
 
 @mobile_router.get("/guest/table/{table_number}", summary="Получить инфо о гостях за столом")
 async def get_table_guests(table_number: int):
-    """Получить информацию о гостях за столом"""
     guests = guest_handler.get_guest_by_table(table_number)
     return {
         "table_number": table_number,
@@ -337,7 +310,6 @@ async def get_table_guests(table_number: int):
 
 @mobile_router.post("/guest/order/update", summary="Обновить заказ гостя")
 async def update_guest_order(order_update: OrderUpdate):
-    """Обновить заказ гостя (добавить выбранные блюда/напитки)"""
     result = guest_handler.update_guest_order(
         order_id=order_update.order_id,
         dish_ids=order_update.dish_ids,
@@ -352,7 +324,6 @@ async def update_guest_order(order_update: OrderUpdate):
 
 @mobile_router.get("/menu/dishes", summary="Получить доступные блюда для меню")
 async def get_menu_dishes():
-    """Получить доступные блюда для меню"""
     dishes = guest_handler.get_menu_dishes()
     return {
         "success": True,
@@ -363,7 +334,6 @@ async def get_menu_dishes():
 
 @mobile_router.get("/menu/drinks", summary="Получить доступные напитки для меню")
 async def get_menu_drinks():
-    """Получить доступные напитки для меню"""
     drinks = guest_handler.get_menu_drinks()
     return {
         "success": True,
@@ -374,7 +344,6 @@ async def get_menu_drinks():
 
 @mobile_router.get("/menu/all", summary="Получить всё меню")
 async def get_full_menu():
-    """Полное меню (блюда + напитки)"""
     dishes = guest_handler.get_menu_dishes()
     drinks = guest_handler.get_menu_drinks()
 
@@ -390,7 +359,6 @@ async def get_full_menu():
 
 @mobile_router.post("/guest/table/{table_number}/complete", summary="Закончить сессию гостей")
 async def complete_table_session(table_number: int):
-    """Завершить сессию гостей за столом"""
     result = guest_handler.complete_guest_session(table_number)
 
     if not result["success"]:
@@ -401,7 +369,6 @@ async def complete_table_session(table_number: int):
 
 @mobile_router.get("/categories", summary="Получить категории посещений")
 async def get_categories():
-    """Получить категории посещений"""
     categories = guest_handler.get_visit_categories()
     return {
         "success": True,
