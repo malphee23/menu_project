@@ -32,73 +32,171 @@
   const API_BASE = 'http://26.234.56.246:8000';
     
 
-    // ============= КОМПОНЕНТЫ =============
     const Login = ({ onLogin }) => {
-      const [password, setPassword] = React.useState('');
-      const [error, setError] = React.useState('');
+  const [login, setLogin] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [error, setError] = React.useState('');
 
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        // 🔐 В production: запрос к /api/auth/login
-        if (password === '123') {
-          onLogin();
-        } else {
-          setError('Неверный пароль');
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setError('');
+
+    fetch(`${API_BASE}/admin/admins/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login, password })
+    })
+      .then(res => {
+        if (!res.ok) {
+          if (res.status === 401) throw new Error('Неверный логин или пароль');
+          if (res.status === 422) throw new Error('Ошибка в данных');
+          throw new Error('Ошибка сервера');
         }
-      };
+        return res.json();
+      })
+      .then(data => {
+        // Ожидаем: { token: "...", role: "superuser", user_id: 1 }
+        localStorage.setItem('admin_token', data.token);
+        localStorage.setItem('admin_role', data.role);
+        onLogin(data.role);
+      })
+      .catch(err => {
+        setError(err.message);
+      });
+  };
 
-      return (
-        <div className="login-form">
-          <h2>Админка</h2>
-          <form onSubmit={handleSubmit}>
-            <div><input
-              type="password"
-              placeholder="Пароль"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoFocus
-            /></div>
-            {error && <div style={{color:'red', marginTop:'8px'}}>{error}</div>}
-            <button type="submit">Войти</button>
-          </form>
+  return (
+    <div className="login-form">
+      <h2>Вход в систему</h2>
+      <form onSubmit={handleSubmit}>
+        <div><input
+          type="text"
+          placeholder="Логин"
+          value={login}
+          onChange={e => setLogin(e.target.value)}
+          required
+        /></div>
+        <div><input
+          type="password"
+          placeholder="Пароль"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          required
+        /></div>
+        {error && <div style={{color:'red', marginTop:'8px'}}>{error}</div>}
+        <button type="submit">Войти</button>
+      </form>
+    </div>
+  );
+};
+
+
+  const AdminPanel = ({ userRole }) => {
+  const [activeTab, setActiveTab] = React.useState('dishes');
+
+  // Определяем доступные вкладки по роли
+  const getTabs = () => {
+    switch (userRole) {
+      case 'superuser':
+        return [
+          { id: 'dishes', name: 'Блюда' },
+          { id: 'users', name: 'Пользователи' },
+          { id: 'admin-users', name: 'Админ-аккаунты' },
+          { id: 'orders', name: 'Заказы' },
+          { id: 'stock', name: 'Остатки' },
+          { id: 'ingredients', name: 'Ингредиенты' },
+          { id: 'bar-items', name: 'Напитки' },
+          { id: 'reviews', name: 'Отзывы' }
+        ];
+      case 'cook':
+        return [
+          { id: 'dishes', name: 'Блюда' },
+          { id: 'bar-items', name: 'Напитки' },
+          { id: 'ingredients', name: 'Ингредиенты' },
+          { id: 'orders', name: 'Заказы' }
+        ];
+      case 'waiter':
+        return [
+          { id: 'dishes', name: 'Блюда' },
+          { id: 'bar-items', name: 'Напитки' },
+          { id: 'users', name: 'Пользователи' },
+          { id: 'orders', name: 'Заказы' }
+        ];
+      default:
+        return [{ id: 'dishes', name: 'Блюда' }];
+    }
+  };
+
+  const tabs = getTabs();
+
+  // Если выбранная вкладка недоступна — переключиться на первую
+  React.useEffect(() => {
+    if (!tabs.some(t => t.id === activeTab)) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [activeTab, tabs]);
+
+  const renderTab = () => {
+    switch (activeTab) {
+      case 'dishes': return <DishesTab />;
+      case 'users': return <UsersTab />;
+      case 'admin-users': return <AdminUsersTab />;
+      case 'orders': return <OrdersTab />;
+      case 'stock': return <StockTab />;
+      case 'ingredients': return <IngredientsTab />;
+      case 'bar-items': return <BarItemsTab />;
+      case 'reviews': return <ReviewsTab />;
+      default: return <DishesTab />;
+    }
+  };
+
+  const roleLabel = {
+    superuser: 'Администратор системы',
+    cook: 'Повар',
+    waiter: 'Официант'
+  }[userRole] || 'Пользователь';
+
+  return (
+    <div className="container">
+      <header>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1>Панель управления ({roleLabel})</h1>
+          <button
+            onClick={() => {
+              localStorage.removeItem('admin_token');
+              localStorage.removeItem('admin_role');
+              window.location.reload();
+            }}
+            style={{
+              fontSize: '12px',
+              marginLeft: '12px',
+              padding: '4px 8px',
+              background: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            🚪 Выйти
+          </button>
         </div>
-      );
-    };
-
-    const AdminPanel = () => {
-      const [activeTab, setActiveTab] = React.useState('dishes');
-
-      const renderTab = () => {
-        switch (activeTab) {
-          case 'dishes': return <DishesTab />;
-		  case 'bar-items': return <BarItemsTab />;
-		  case 'ingredients': return <IngredientsTab />;
-          case 'users': return <UsersTab />;
-          case 'orders': return <OrdersTab />;
-          case 'stock': return <StockTab />;
-          case 'reviews': return <ReviewsTab />;
-          default: return <DishesTab />;
-        }
-      };
-
-      return (
-        <div className="container">
-          <header>
-            <h1>Панель управления</h1>
-            <nav>
-              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('dishes'); }}>Блюда</a>
-              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('bar-items'); }}>Напитки</a>
-			  <a href="#" onClick={e => { e.preventDefault(); setActiveTab('ingredients'); }}>Ингредиенты</a>
-			  <a href="#" onClick={e => { e.preventDefault(); setActiveTab('users'); }}>Пользователи</a>
-              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('orders'); }}>Заказы</a>
-              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('stock'); }}>Остатки</a>
-              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('reviews'); }}>Отзывы</a>
-            </nav>
-          </header>
-          {renderTab()}
-        </div>
-      );
-    };
+        <nav>
+          {tabs.map(tab => (
+            <a
+              key={tab.id}
+              href="#"
+              onClick={e => { e.preventDefault(); setActiveTab(tab.id); }}
+            >
+              {tab.name}
+            </a>
+          ))}
+        </nav>
+      </header>
+      {renderTab()}
+    </div>
+  );
+};
 	
 //======================================TABS===================================
 //======================================TABS===================================
@@ -873,6 +971,144 @@ const OrdersTab = () => {
   );
 };
 
+//==========================================================================
+
+const AdminUsersTab = () => {
+  const [users, setUsers] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [showForm, setShowForm] = React.useState(false);
+  const [editingUser, setEditingUser] = React.useState(null);
+
+  // Отображение ролей на русском
+  const roleLabels = {
+    superuser: 'Администратор системы',
+    cook: 'Повар',
+    waiter: 'Официант'
+  };
+
+  const roleOptions = [
+    { value: 'superuser', label: 'Администратор системы' },
+    { value: 'cook', label: 'Повар' },
+    { value: 'waiter', label: 'Официант' }
+  ];
+
+  // Загрузка
+  React.useEffect(() => {
+    fetch(`${API_BASE}/admin/admins`)
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось загрузить админ-аккаунты');
+        return res.json();
+      })
+      .then(data => {
+        setUsers(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  // Сохранение
+  const handleSave = (userData) => {
+    // Пароль не отправляем, если редактируем (если не меняем)
+    // Бэкенд должен сам хешировать при создании/изменении
+    const url = editingUser
+      ? `${API_BASE}/admin/admins/${editingUser.id}`
+      : `${API_BASE}/admin/admins`;
+    const method = editingUser ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(res.statusText || 'Ошибка сохранения');
+        return res.json();
+      })
+      .then(savedUser => {
+        if (editingUser) {
+          setUsers(users.map(u => u.id === savedUser.id ? savedUser : u));
+        } else {
+          setUsers([...users, savedUser]);
+        }
+        setShowForm(false);
+        setEditingUser(null);
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Удаление
+  const handleDelete = (id) => {
+    if (!confirm('Удалить админ-аккаунт?')) return;
+    fetch(`${API_BASE}/admin/admins/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось удалить');
+        setUsers(users.filter(u => u.id !== id));
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Редактирование
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setShowForm(true);
+  };
+
+  if (loading) return <div className="card">Загрузка...</div>;
+  if (error) return <div className="card" style={{ color: 'red' }}>{error}</div>;
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2>Админ-аккаунты</h2>
+        <button onClick={() => setShowForm(true)}>➕ Добавить аккаунт</button>
+      </div>
+
+      {showForm && (
+        <AdminUserForm
+          user={editingUser}
+          onSave={handleSave}
+          onCancel={() => {
+            setShowForm(false);
+            setEditingUser(null);
+          }}
+        />
+      )}
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Логин</th>
+            <th>Роль</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map(u => (
+            <tr key={u.id}>
+              <td>{u.id}</td>
+              <td>{u.login}</td>
+              <td>{roleLabels[u.role] || u.role}</td>
+              <td>
+                <button onClick={() => handleEdit(u)} style={{ fontSize: '12px', padding: '2px 6px', marginRight: '4px' }}>✏️</button>
+                <button onClick={() => handleDelete(u.id)} style={{ fontSize: '12px', padding: '2px 6px', background: '#dc3545' }}>🗑️</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 //=====================================FORMS==================================
 //=====================================FORMS==================================
 //=====================================FORMS==================================
@@ -1113,10 +1349,6 @@ const OrderEditForm = ({ order, onUpdate }) => {
 
 //============================================================================
 
-
-
-//============================================================================
-
 const ReviewForm = ({ review, users, orders, onSave, onCancel }) => {
   const [data, setData] = React.useState({
     user_id: review?.user_id || (users.length > 0 ? users[0].id : ''),
@@ -1194,16 +1426,96 @@ const ReviewForm = ({ review, users, orders, onSave, onCancel }) => {
 
 //============================================================================
 
+const AdminUserForm = ({ user, onSave, onCancel }) => {
+  const [data, setData] = React.useState({
+    login: user?.login || '',
+    password: '', // пароль вводится только при создании/смене
+    role: user?.role || 'waiter'
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const payload = {
+      login: data.login.trim(),
+      role: data.role
+    };
+
+    // Пароль обязателен только при создании
+    if (!user || data.password) {
+      if (data.password.length < 4) {
+        alert('Пароль должен быть не короче 4 символов');
+        return;
+      }
+      payload.password = data.password;
+    }
+
+    if (!payload.login) {
+      alert('Введите логин');
+      return;
+    }
+
+    onSave(payload);
+  };
+
+  return (
+    <div style={{ marginBottom: '16px', padding: '12px', border: '1px solid #ddd', borderRadius: '6px', background: '#f9f9f9' }}>
+      <h3>{user ? 'Редактировать аккаунт' : 'Новый админ-аккаунт'}</h3>
+      <form onSubmit={handleSubmit}>
+        <div><input name="login" placeholder="Логин *" value={data.login} onChange={handleChange} required /></div>
+        <div><input name="password" type="password" placeholder={user ? "Новый пароль (если менять)" : "Пароль *"} value={data.password} onChange={handleChange} /></div>
+        
+        <div>
+          <select name="role" value={data.role} onChange={handleChange} required style={{width:'100%', padding:'6px', marginTop:'4px'}}>
+            <option value="">— Роль —</option>
+            <option value="superuser">Администратор системы</option>
+            <option value="cook">Повар</option>
+            <option value="waiter">Официант</option>
+          </select>
+        </div>
+
+        <div style={{ marginTop: '12px' }}>
+          <button type="submit">Сохранить</button>
+          <button type="button" onClick={onCancel} style={{ background: '#6c757d', marginLeft: '8px' }}>Отмена</button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+//=========================================================================
+
     // ============= ОСНОВНОЕ ПРИЛОЖЕНИЕ =============
     const App = () => {
-      const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+  const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+  const [userRole, setUserRole] = React.useState(null);
 
-      if (!isLoggedIn) {
-        return <Login onLogin={() => setIsLoggedIn(true)} />;
-      }
+  // Проверка при загрузке: если есть токен — попробуем восстановить сессию
+  React.useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    const role = localStorage.getItem('admin_role');
+    if (token && role) {
+      // Можно сделать проверку токена через API, но для упрощения — доверяем localStorage
+      setIsLoggedIn(true);
+      setUserRole(role);
+    }
+  }, []);
 
-      return <AdminPanel />;
-    };
+  const handleLogin = (role) => {
+    setIsLoggedIn(true);
+    setUserRole(role);
+  };
+
+  if (!isLoggedIn) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  return <AdminPanel userRole={userRole} />;
+};
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
