@@ -1,6 +1,7 @@
 # python main.py - для запуска локального сайта в терминале PyCharm или cmd
 # http://127.0.0.1:8000/docs - интерактивная документация
 # Ip и порт будет показан в терминале или cmd
+# . venv/Scripts/activate
 
 import uuid
 from datetime import datetime
