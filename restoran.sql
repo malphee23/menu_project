@@ -1,5 +1,5 @@
 -- SQLite версия базы данных для ресторана/кафе
--- Преобразовано из PostgreSQL дампа
+-- ИСПРАВЛЕННАЯ ВЕРСИЯ - без синтаксических ошибок
 
 PRAGMA foreign_keys = ON;
 
@@ -111,7 +111,13 @@ CREATE TABLE user_preferences (
     FOREIGN KEY (tag_id) REFERENCES dish_tags(id)
 );
 
--- Таблица: orders
+-- Таблица: tables - создаем ПЕРЕД orders
+CREATE TABLE tables (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_number INTEGER NOT NULL UNIQUE
+);
+
+-- Таблица: orders (теперь после tables)
 CREATE TABLE orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -146,10 +152,16 @@ CREATE TABLE stock_log (
     FOREIGN KEY (order_item_id) REFERENCES order_items(id)
 );
 
--- Таблица: tables
-CREATE TABLE tables (
+-- Таблица для отзывов (добавим для sofia_modules.py)
+CREATE TABLE reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    table_number INTEGER NOT NULL UNIQUE,
+    order_id INTEGER NOT NULL,
+    user_id INTEGER,
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 -- Вставка данных
@@ -232,9 +244,16 @@ INSERT INTO user_preferences (id, user_id, tag_id, weight) VALUES
 (2, 2, 1, 1.000),
 (3, 3, 4, 0.800);
 
-INSERT INTO orders (id, user_id, created_at, status, total_price) VALUES
-(1, 1, '2025-12-07 01:23:27.982653', 'новый', 1350.00),
-(2, 2, '2025-12-07 01:23:27.982653', 'выполнен', 450.00);
+INSERT INTO tables (id, table_number) VALUES
+(1, 1),
+(2, 2),
+(3, 3),
+(4, 4),
+(5, 5);
+
+INSERT INTO orders (id, user_id, created_at, status, total_price, table_number) VALUES
+(1, 1, '2025-12-07 01:23:27.982653', 'новый', 1350.00, 1),
+(2, 2, '2025-12-07 01:23:27.982653', 'выполнен', 450.00, 2);
 
 INSERT INTO order_items (id, order_id, dish_id, bar_item_id) VALUES
 (1, 1, 2, NULL),
@@ -249,16 +268,6 @@ INSERT INTO stock_log (id, ingredient_id, change_amount, reason, created_at, ord
 (5, 1, -120.000, 'Списание по заказу', '2025-12-07 01:26:52.686032', 3),
 (6, 4, -40.000, 'Списание по заказу', '2025-12-07 01:26:52.686032', 3),
 (7, 5, -20.000, 'Списание по заказу', '2025-12-07 01:26:52.686032', 3);
-
-INSERT INTO tables (id, table_number, device_id) VALUES
-(1, 1, 'device_001'),
-(2, 2, 'device_002'),
-(3, 3, 'device_003'),
-(4, 4, 'device_004'),
-(5, 5, 'device_005');
-
--- Сброс последовательностей (для SQLite не требуется, но оставлю для совместимости)
--- SQLite использует AUTOINCREMENT для управления ID
 
 -- Индексы для улучшения производительности
 CREATE INDEX idx_bar_ingredients_bar_item_id ON bar_ingredients(bar_item_id);

@@ -12,6 +12,7 @@ from typing import List, Optional
 # Импортируем роутеры
 from mobile import mobile_router
 from admin import admin_router
+from sofia_modules import orders_router, payments_router, reviews_router, kitchen_router
 
 # Импортируем общее хранилище
 from storage import visitor_submissions, session_flags
@@ -33,6 +34,10 @@ app.add_middleware(
 
 app.include_router(admin_router)
 app.include_router(mobile_router)
+app.include_router(orders_router)
+app.include_router(payments_router)
+app.include_router(reviews_router)
+app.include_router(kitchen_router)
 
 class VisitPurpose(BaseModel):
     purpose: str
@@ -50,10 +55,6 @@ class VisitorData(BaseModel):
     taste_preferences: Optional[TastePreferences] = None
     dietary_restrictions: Optional[DietaryRestrictions] = None
     people_count: int
-
-# УБРАТЬ ЭТИ СТРОКИ (они теперь в storage.py):
-# visitor_submissions = []
-# session_flags = {}
 
 # Сессии и заказы
 
