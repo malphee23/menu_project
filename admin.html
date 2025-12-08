@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Админка — Управление</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    body { background: #f6f8fa; padding: 16px; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #ddd; margin-bottom: 20px; }
+    nav a { margin-right: 16px; text-decoration: none; color: #007bff; }
+    nav a:hover { text-decoration: underline; }
+    .card { background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #f1f3f5; font-weight: 600; }
+    input, button, select { padding: 6px 10px; margin: 4px; border: 1px solid #ccc; border-radius: 4px; }
+    button { background: #007bff; color: white; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    .login-form { max-width: 320px; margin: 60px auto; padding: 24px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ============= MOCK-DATA (замените на fetch() завтра) =============
+    const MOCK_DISHES = [
+      { id: 1, name: "Овощной суп", description: "Свежие овощи, бульон", price: 250.00, alcohol: false, tags: ["веган", "без глютена"], available: true },
+      { id: 2, name: "Паста Карбонара", description: "Спагетти, бекон, сыр", price: 450.00, alcohol: false, tags: ["лактоза", "глютен"], available: true }
+    ];
+
+    const MOCK_USERS = [
+      { id: 1, name: "Анна", age: 28, diet: "веган;без орехов" },
+      { id: 2, name: "Иван", age: 35, diet: "кето" }
+    ];
+
+    const MOCK_ORDERS = [
+      { id: 101, user_id: 1, status: "готовится", total: 250.00 },
+      { id: 102, user_id: 2, status: "новый", total: 450.00 }
+    ];
+
+    // ============= КОМПОНЕНТЫ =============
+    const Login = ({ onLogin }) => {
+      const [password, setPassword] = React.useState('');
+      const [error, setError] = React.useState('');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        // 🔐 В production: запрос к /api/auth/login
+        if (password === 'admin123') {
+          onLogin();
+        } else {
+          setError('Неверный пароль');
+        }
+      };
+
+      return (
+        <div className="login-form">
+          <h2>Админка</h2>
+          <form onSubmit={handleSubmit}>
+            <div><input
+              type="password"
+              placeholder="Пароль"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              autoFocus
+            /></div>
+            {error && <div style={{color:'red', marginTop:'8px'}}>{error}</div>}
+            <button type="submit">Войти</button>
+          </form>
+        </div>
+      );
+    };
+
+    const AdminPanel = () => {
+      const [activeTab, setActiveTab] = React.useState('dishes');
+
+      const renderTab = () => {
+        switch (activeTab) {
+          case 'dishes': return <DishesTab />;
+          case 'users': return <UsersTab />;
+          case 'orders': return <OrdersTab />;
+          case 'stock': return <StockTab />;
+          case 'reviews': return <ReviewsTab />;
+          default: return <DishesTab />;
+        }
+      };
+
+      return (
+        <div className="container">
+          <header>
+            <h1>Панель управления</h1>
+            <nav>
+              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('dishes'); }}>Блюда</a>
+              <a href="#" onClick={e => { e.preventDefault(); setActiveTAB('users'); }}>Пользователи</a>
+              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('orders'); }}>Заказы</a>
+              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('stock'); }}>Остатки</a>
+              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('reviews'); }}>Отзывы</a>
+            </nav>
+          </header>
+          {renderTab()}
+        </div>
+      );
+    };
+
+    const DishesTab = () => (
+      <div className="card">
+        <h2>Блюда</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Название</th><th>Цена</th><th>Теги</th><th>Доступно</th></tr></thead>
+          <tbody>
+            {MOCK_DISHES.map(d => (
+              <tr key={d.id}>
+                <td>{d.id}</td>
+                <td>{d.name}</td>
+                <td>{d.price} ₽</td>
+                <td>{d.tags.join(', ')}</td>
+                <td>{d.available ? '✅' : '❌'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button>Добавить блюдо</button>
+      </div>
+    );
+
+    const UsersTab = () => (
+      <div className="card">
+        <h2>Пользователи</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Имя</th><th>Возраст</th><th>Диета</th></tr></thead>
+          <tbody>
+            {MOCK_USERS.map(u => (
+              <tr key={u.id}>
+                <td>{u.id}</td>
+                <td>{u.name}</td>
+                <td>{u.age}</td>
+                <td>{u.diet}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+
+    const OrdersTab = () => (
+      <div className="card">
+        <h2>Заказы</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Клиент</th><th>Статус</th><th>Сумма</th></tr></thead>
+          <tbody>
+            {MOCK_ORDERS.map(o => (
+              <tr key={o.id}>
+                <td>{o.id}</td>
+                <td>{o.user_id}</td>
+                <td>{o.status}</td>
+                <td>{o.total} ₽</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+
+    const StockTab = () => <div className="card"><h2>Остатки</h2><p>Данные по складу (mock)</p></div>;
+    const ReviewsTab = () => <div className="card"><h2>Отзывы</h2><p>Отзывы пользователей (mock)</p></div>;
+
+    // ============= ОСНОВНОЕ ПРИЛОЖЕНИЕ =============
+    const App = () => {
+      const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+
+      if (!isLoggedIn) {
+        return <Login onLogin={() => setIsLoggedIn(true)} />;
+      }
+
+      return <AdminPanel />;
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
