@@ -1,4 +1,3 @@
-# mobile.py
 import sqlite3
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -308,7 +307,7 @@ class MobileGuestHandler:
 guest_handler = MobileGuestHandler()
 
 
-@mobile_router.post("/guest/register")
+@mobile_router.post("/guest/register", summary="Регистрация пользователя")
 async def register_guest(guest_data: GuestData):
     """Регистрация гостя (вход без аккаунта)"""
     result = guest_handler.create_guest_user(
@@ -325,7 +324,7 @@ async def register_guest(guest_data: GuestData):
     return result
 
 
-@mobile_router.get("/guest/table/{table_number}")
+@mobile_router.get("/guest/table/{table_number}", summary="Получить инфо о гостях за столом")
 async def get_table_guests(table_number: int):
     """Получить информацию о гостях за столом"""
     guests = guest_handler.get_guest_by_table(table_number)
@@ -336,7 +335,7 @@ async def get_table_guests(table_number: int):
     }
 
 
-@mobile_router.post("/guest/order/update")
+@mobile_router.post("/guest/order/update", summary="Обновить заказ гостя")
 async def update_guest_order(order_update: OrderUpdate):
     """Обновить заказ гостя (добавить выбранные блюда/напитки)"""
     result = guest_handler.update_guest_order(
@@ -351,7 +350,7 @@ async def update_guest_order(order_update: OrderUpdate):
     return result
 
 
-@mobile_router.get("/menu/dishes")
+@mobile_router.get("/menu/dishes", summary="Получить доступные блюда для меню")
 async def get_menu_dishes():
     """Получить доступные блюда для меню"""
     dishes = guest_handler.get_menu_dishes()
@@ -362,7 +361,7 @@ async def get_menu_dishes():
     }
 
 
-@mobile_router.get("/menu/drinks")
+@mobile_router.get("/menu/drinks", summary="Получить доступные напитки для меню")
 async def get_menu_drinks():
     """Получить доступные напитки для меню"""
     drinks = guest_handler.get_menu_drinks()
@@ -373,7 +372,7 @@ async def get_menu_drinks():
     }
 
 
-@mobile_router.get("/menu/all")
+@mobile_router.get("/menu/all", summary="Получить всё меню")
 async def get_full_menu():
     """Полное меню (блюда + напитки)"""
     dishes = guest_handler.get_menu_dishes()
@@ -389,7 +388,7 @@ async def get_full_menu():
     }
 
 
-@mobile_router.post("/guest/table/{table_number}/complete")
+@mobile_router.post("/guest/table/{table_number}/complete", summary="Закончить сессию гостей")
 async def complete_table_session(table_number: int):
     """Завершить сессию гостей за столом"""
     result = guest_handler.complete_guest_session(table_number)
@@ -400,7 +399,7 @@ async def complete_table_session(table_number: int):
     return result
 
 
-@mobile_router.get("/categories")
+@mobile_router.get("/categories", summary="Получить категории посещений")
 async def get_categories():
     """Получить категории посещений"""
     categories = guest_handler.get_visit_categories()

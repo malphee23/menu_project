@@ -9,12 +9,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 
-# Импортируем роутеры
 from mobile import mobile_router
 from admin import admin_router
 from sofia_modules import orders_router, payments_router, reviews_router, kitchen_router
 
-# Импортируем общее хранилище
 from storage import visitor_submissions, session_flags
 
 from starlette.middleware.cors import CORSMiddleware
