@@ -29,21 +29,8 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    // ============= MOCK-DATA (замените на fetch() завтра) =============
-    const MOCK_DISHES = [
-      { id: 1, name: "Овощной суп", description: "Свежие овощи, бульон", price: 250.00, alcohol: false, tags: ["веган", "без глютена"], available: true },
-      { id: 2, name: "Паста Карбонара", description: "Спагетти, бекон, сыр", price: 450.00, alcohol: false, tags: ["лактоза", "глютен"], available: true }
-    ];
-
-    const MOCK_USERS = [
-      { id: 1, name: "Анна", age: 28, diet: "веган;без орехов" },
-      { id: 2, name: "Иван", age: 35, diet: "кето" }
-    ];
-
-    const MOCK_ORDERS = [
-      { id: 101, user_id: 1, status: "готовится", total: 250.00 },
-      { id: 102, user_id: 2, status: "новый", total: 450.00 }
-    ];
+  const API_BASE = 'http://26.234.56.246:8000';
+    
 
     // ============= КОМПОНЕНТЫ =============
     const Login = ({ onLogin }) => {
@@ -53,7 +40,7 @@
       const handleSubmit = (e) => {
         e.preventDefault();
         // 🔐 В production: запрос к /api/auth/login
-        if (password === 'admin123') {
+        if (password === '123') {
           onLogin();
         } else {
           setError('Неверный пароль');
@@ -84,6 +71,8 @@
       const renderTab = () => {
         switch (activeTab) {
           case 'dishes': return <DishesTab />;
+		  case 'bar-items': return <BarItemsTab />;
+		  case 'ingredients': return <IngredientsTab />;
           case 'users': return <UsersTab />;
           case 'orders': return <OrdersTab />;
           case 'stock': return <StockTab />;
@@ -98,7 +87,9 @@
             <h1>Панель управления</h1>
             <nav>
               <a href="#" onClick={e => { e.preventDefault(); setActiveTab('dishes'); }}>Блюда</a>
-              <a href="#" onClick={e => { e.preventDefault(); setActiveTAB('users'); }}>Пользователи</a>
+              <a href="#" onClick={e => { e.preventDefault(); setActiveTab('bar-items'); }}>Напитки</a>
+			  <a href="#" onClick={e => { e.preventDefault(); setActiveTab('ingredients'); }}>Ингредиенты</a>
+			  <a href="#" onClick={e => { e.preventDefault(); setActiveTab('users'); }}>Пользователи</a>
               <a href="#" onClick={e => { e.preventDefault(); setActiveTab('orders'); }}>Заказы</a>
               <a href="#" onClick={e => { e.preventDefault(); setActiveTab('stock'); }}>Остатки</a>
               <a href="#" onClick={e => { e.preventDefault(); setActiveTab('reviews'); }}>Отзывы</a>
@@ -108,68 +99,1100 @@
         </div>
       );
     };
+	
+//======================================TABS===================================
+//======================================TABS===================================
+//======================================TABS===================================
+//======================================TABS===================================
+//======================================TABS===================================
 
-    const DishesTab = () => (
-      <div className="card">
+const DishesTab = () => {
+  const [dishes, setDishes] = React.useState([]);
+  const [categories, setCategories] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [showForm, setShowForm] = React.useState(false);
+  const [editingDish, setEditingDish] = React.useState(null);
+
+  // Загрузка блюд и категорий
+  React.useEffect(() => {
+    Promise.all([
+      fetch(`${API_BASE}/admin/dishes`).then(r => r.json()),
+      fetch(`${API_BASE}/admin/visit_categories`).then(r => r.json())
+    ])
+      .then(([dishesData, categoriesData]) => {
+        setDishes(Array.isArray(dishesData) ? dishesData : []);
+        setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError('Ошибка загрузки: ' + err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  // Сохранение (создание / обновление)
+  const handleSave = (dishData) => {
+    const url = editingDish
+      ? `${API_BASE}/admin/dishes/${editingDish.id}`
+      : `${API_BASE}/admin/dishes`;
+    const method = editingDish ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dishData)
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(res.statusText || 'Ошибка сохранения');
+        return res.json();
+      })
+      .then(savedDish => {
+        if (editingDish) {
+          setDishes(dishes.map(d => d.id === savedDish.id ? savedDish : d));
+        } else {
+          setDishes([...dishes, savedDish]);
+        }
+        setShowForm(false);
+        setEditingDish(null);
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Удаление
+  const handleDelete = (id) => {
+    if (!confirm('Удалить блюдо?')) return;
+    fetch(`${API_BASE}/admin/dishes/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось удалить');
+        setDishes(dishes.filter(d => d.id !== id));
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Редактирование
+  const handleEdit = (dish) => {
+    setEditingDish(dish);
+    setShowForm(true);
+  };
+
+  if (loading) return <div className="card">Загрузка блюд и категорий...</div>;
+  if (error) return <div className="card" style={{ color: 'red' }}>{error}</div>;
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2>Блюда</h2>
-        <table>
-          <thead><tr><th>ID</th><th>Название</th><th>Цена</th><th>Теги</th><th>Доступно</th></tr></thead>
-          <tbody>
-            {MOCK_DISHES.map(d => (
-              <tr key={d.id}>
-                <td>{d.id}</td>
-                <td>{d.name}</td>
-                <td>{d.price} ₽</td>
-                <td>{d.tags.join(', ')}</td>
-                <td>{d.available ? '✅' : '❌'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <button>Добавить блюдо</button>
+        <button onClick={() => setShowForm(true)}>➕ Добавить блюдо</button>
       </div>
-    );
 
-    const UsersTab = () => (
-      <div className="card">
-        <h2>Пользователи</h2>
+      {showForm && (
+        <DishForm
+          dish={editingDish}
+          categories={categories}
+          onSave={handleSave}
+          onCancel={() => {
+            setShowForm(false);
+            setEditingDish(null);
+          }}
+        />
+      )}
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Цена</th>
+            <th>Категория</th>
+            <th>Доступно</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dishes.map(d => (
+            <tr key={d.id}>
+              <td>{d.id}</td>
+              <td>{d.name}</td>
+              <td>{d.price} ₽</td>
+              <td>
+                {categories.find(c => c.id === d.category_id)?.name || `ID ${d.category_id}`}
+              </td>
+              <td>{d.is_available ? '✅' : '❌'}</td>
+              <td>
+                <button onClick={() => handleEdit(d)} style={{ fontSize: '12px', padding: '2px 6px', marginRight: '4px' }}>✏️</button>
+                <button onClick={() => handleDelete(d.id)} style={{ fontSize: '12px', padding: '2px 6px', background: '#dc3545' }}>🗑️</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+//============================================================================
+
+const BarItemsTab = () => {
+  const [items, setItems] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [showForm, setShowForm] = React.useState(false);
+  const [editingItem, setEditingItem] = React.useState(null);
+
+  // Загрузка списка
+  React.useEffect(() => {
+    fetch(`${API_BASE}/admin/bar-items`)
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось загрузить напитки');
+        return res.json();
+      })
+      .then(data => {
+        setItems(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  // Сохранение (создание / обновление)
+  const handleSave = (itemData) => {
+    const url = editingItem
+      ? `${API_BASE}/admin/bar-items/${editingItem.id}`
+      : `${API_BASE}/admin/bar-items`;
+    const method = editingItem ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(itemData)
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(res.statusText || 'Ошибка сохранения');
+        return res.json();
+      })
+      .then(savedItem => {
+        if (editingItem) {
+          setItems(items.map(i => i.id === savedItem.id ? savedItem : i));
+        } else {
+          setItems([...items, savedItem]);
+        }
+        setShowForm(false);
+        setEditingItem(null);
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Удаление
+  const handleDelete = (id) => {
+    if (!confirm('Удалить напиток?')) return;
+    fetch(`${API_BASE}/admin/bar-items/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось удалить');
+        setItems(items.filter(i => i.id !== id));
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Редактирование
+  const handleEdit = (item) => {
+    setEditingItem(item);
+    setShowForm(true);
+  };
+
+  if (loading) return <div className="card">Загрузка...</div>;
+  if (error) return <div className="card" style={{ color: 'red' }}>{error}</div>;
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2>Алкогольные напитки</h2>
+        <button onClick={() => setShowForm(true)}>➕ Добавить напиток</button>
+      </div>
+
+      {showForm && (
+        <BarItemForm
+          item={editingItem}
+          onSave={handleSave}
+          onCancel={() => {
+            setShowForm(false);
+            setEditingItem(null);
+          }}
+        />
+      )}
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Цена</th>
+            <th>Алкоголь?</th>
+            <th>Крепость</th>
+            <th>Доступно</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(i => (
+            <tr key={i.id}>
+              <td>{i.id}</td>
+              <td>{i.name}</td>
+              <td>{i.price} ₽</td>
+              <td>{i.is_alcoholic ? '✅' : '❌'}</td>
+              <td>{i.strength || '—'}</td>
+              <td>{i.is_available ? '✅' : '❌'}</td>
+              <td>
+                <button onClick={() => handleEdit(i)} style={{ fontSize: '12px', padding: '2px 6px', marginRight: '4px' }}>✏️</button>
+                <button onClick={() => handleDelete(i.id)} style={{ fontSize: '12px', padding: '2px 6px', background: '#dc3545' }}>🗑️</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+//============================================================================
+
+const IngredientsTab = () => {
+  const [items, setItems] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [showForm, setShowForm] = React.useState(false);
+  const [editingItem, setEditingItem] = React.useState(null);
+
+  // Загрузка
+  React.useEffect(() => {
+    fetch(`${API_BASE}/admin/ingredients`)
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось загрузить ингредиенты');
+        return res.json();
+      })
+      .then(data => {
+        setItems(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  // Сохранение
+  const handleSave = (itemData) => {
+    const url = editingItem
+      ? `${API_BASE}/admin/ingredients/${editingItem.id}`
+      : `${API_BASE}/admin/ingredients`;
+    const method = editingItem ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(itemData)
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(res.statusText || 'Ошибка сохранения');
+        return res.json();
+      })
+      .then(savedItem => {
+        if (editingItem) {
+          setItems(items.map(i => i.id === savedItem.id ? savedItem : i));
+        } else {
+          setItems([...items, savedItem]);
+        }
+        setShowForm(false);
+        setEditingItem(null);
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Удаление
+  const handleDelete = (id) => {
+    if (!confirm('Удалить ингредиент?')) return;
+    fetch(`${API_BASE}/admin/ingredients/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось удалить');
+        setItems(items.filter(i => i.id !== id));
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Редактирование
+  const handleEdit = (item) => {
+    setEditingItem(item);
+    setShowForm(true);
+  };
+
+  // Проверка критического уровня
+  const isLowStock = (current, min) => (current || 0) < (min || 0);
+
+  if (loading) return <div className="card">Загрузка ингредиентов...</div>;
+  if (error) return <div className="card" style={{ color: 'red' }}>{error}</div>;
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2>Ингредиенты</h2>
+        <button onClick={() => setShowForm(true)}>➕ Добавить ингредиент</button>
+      </div>
+
+      {showForm && (
+        <IngredientForm
+          item={editingItem}
+          onSave={handleSave}
+          onCancel={() => {
+            setShowForm(false);
+            setEditingItem(null);
+          }}
+        />
+      )}
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Ед. изм.</th>
+            <th>Текущий остаток</th>
+            <th>Минимум</th>
+            <th>Статус</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(i => {
+            const low = isLowStock(i.current_stock, i.min_stock_level);
+            return (
+              <tr key={i.id} style={low ? { backgroundColor: '#fff3cd' } : {}}>
+                <td>{i.id}</td>
+                <td>{i.name}</td>
+                <td>{i.unit}</td>
+                <td>{i.current_stock || 0}</td>
+                <td>{i.min_stock_level || 0}</td>
+                <td>
+                  {low ? (
+                    <span style={{ color: '#856404', fontWeight: 'bold' }}>⚠️ Низкий остаток</span>
+                  ) : (
+                    '✅ В норме'
+                  )}
+                </td>
+                <td>
+                  <button onClick={() => handleEdit(i)} style={{ fontSize: '12px', padding: '2px 6px', marginRight: '4px' }}>✏️</button>
+                  <button onClick={() => handleDelete(i.id)} style={{ fontSize: '12px', padding: '2px 6px', background: '#dc3545' }}>🗑️</button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+//============================================================================
+
+
+const UsersTab = () => {
+  const [users, setUsers] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  // Загрузка списка пользователей
+  React.useEffect(() => {
+    fetch(`${API_BASE}/admin/users`)
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось загрузить пользователей');
+        return res.json();
+      })
+      .then(data => {
+        setUsers(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  // Удаление пользователя
+  const handleDelete = (id) => {
+    if (!confirm('Удалить пользователя? Это действие нельзя отменить.')) return;
+
+    fetch(`${API_BASE}/admin/users/${id}`, {
+      method: 'DELETE'
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Ошибка при удалении');
+        // Обновляем список: фильтруем удалённого
+        setUsers(users.filter(u => u.id !== id));
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  if (loading) return <div className="card">Загрузка...</div>;
+  if (error) return <div className="card" style={{color:'red'}}>Ошибка: {error}</div>;
+
+  return (
+    <div className="card">
+      <h2>Пользователи</h2>
+      {users.length === 0 ? (
+        <p>Нет пользователей</p>
+      ) : (
         <table>
-          <thead><tr><th>ID</th><th>Имя</th><th>Возраст</th><th>Диета</th></tr></thead>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Логин</th>
+              <th>Дата рождения</th>
+              <th>Тип диеты</th>
+              <th>Стиль питания</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
           <tbody>
-            {MOCK_USERS.map(u => (
+            {users.map(u => (
               <tr key={u.id}>
                 <td>{u.id}</td>
-                <td>{u.name}</td>
-                <td>{u.age}</td>
-                <td>{u.diet}</td>
+                <td>{u.login}</td>
+                <td>{u.birth_date ? new Date(u.birth_date).toLocaleDateString('ru-RU') : '—'}</td>
+                <td>{u.diet_type || '—'}</td>
+                <td>{u.meal_style || '—'}</td>
+                <td>
+                  <button
+                    onClick={() => handleDelete(u.id)}
+                    style={{ fontSize: '12px', padding: '4px 8px', background: '#dc3545' }}
+                  >
+                    🗑️ Удалить
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-    );
+      )}
+    </div>
+  );
+};
 
-    const OrdersTab = () => (
-      <div className="card">
-        <h2>Заказы</h2>
-        <table>
-          <thead><tr><th>ID</th><th>Клиент</th><th>Статус</th><th>Сумма</th></tr></thead>
-          <tbody>
-            {MOCK_ORDERS.map(o => (
-              <tr key={o.id}>
-                <td>{o.id}</td>
-                <td>{o.user_id}</td>
-                <td>{o.status}</td>
-                <td>{o.total} ₽</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
+//============================================================================
+
+const OrdersTab = () => {
+  const [orders, setOrders] = React.useState([]);
+  const [dishes, setDishes] = React.useState([]);
+  const [barItems, setBarItems] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [selectedOrder, setSelectedOrder] = React.useState(null);
+  const [orderItems, setOrderItems] = React.useState([]); // 🆕 Отдельно храним позиции
+
+  // Загрузка заказов и справочников
+  React.useEffect(() => {
+    Promise.all([
+      fetch(`${API_BASE}/admin/orders`).then(r => r.json()),
+      fetch(`${API_BASE}/admin/dishes`).then(r => r.json()),
+      fetch(`${API_BASE}/admin/bar-items`).then(r => r.json())
+    ])
+      .then(([ordersData, dishesData, barItemsData]) => {
+        setOrders(Array.isArray(ordersData) ? ordersData : []);
+        setDishes(Array.isArray(dishesData) ? dishesData : []);
+        setBarItems(Array.isArray(barItemsData) ? barItemsData : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError('Ошибка загрузки: ' + err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  // Загрузка позиций заказа при выборе
+  React.useEffect(() => {
+    if (!selectedOrder) return;
+    fetch(`${API_BASE}/admin/order_items?order_id=${selectedOrder.id}`)
+      .then(res => res.json())
+      .then(data => {
+        setOrderItems(Array.isArray(data) ? data : []);
+      })
+      .catch(err => {
+        alert('Не удалось загрузить позиции: ' + err.message);
+      });
+  }, [selectedOrder]);
+
+  // Удаление заказа
+  const handleDelete = (id) => {
+    if (!confirm('Удалить заказ и все его позиции?')) return;
+    fetch(`${API_BASE}/admin/orders/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error('Не удалось удалить');
+        setOrders(orders.filter(o => o.id !== id));
+        if (selectedOrder?.id === id) {
+          setSelectedOrder(null);
+          setOrderItems([]);
+        }
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  // Обновление заказа
+  const handleUpdate = (orderData) => {
+    fetch(`${API_BASE}/admin/orders/${orderData.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderData)
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Ошибка обновления');
+        return res.json();
+      })
+      .then(updated => {
+        setOrders(orders.map(o => o.id === updated.id ? updated : o));
+        setSelectedOrder(updated);
+      })
+      .catch(err => {
+        alert('Ошибка: ' + err.message);
+      });
+  };
+
+  if (loading) return <div className="card">Загрузка...</div>;
+  if (error) return <div className="card" style={{ color: 'red' }}>{error}</div>;
+
+  // Найти название позиции
+  const getItemName = (dish_id, bar_item_id) => {
+    if (dish_id) {
+      const d = dishes.find(x => x.id === dish_id);
+      return d ? `🍽️ ${d.name}` : `Блюдо ID ${dish_id}`;
+    }
+    if (bar_item_id) {
+      const b = barItems.find(x => x.id === bar_item_id);
+      return b ? `🍷 ${b.name}` : `Напиток ID ${bar_item_id}`;
+    }
+    return '—';
+  };
+
+  return (
+    <div className="card">
+      <h2>Заказы</h2>
+
+      {/* Детали выбранного заказа */}
+      {selectedOrder && (
+        <div style={{ marginBottom: '20px', padding: '12px', border: '1px solid #ddd', borderRadius: '6px', background: '#f9f9f9' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3>Заказ #{selectedOrder.id} (Стол {selectedOrder.table_number || '—'})</h3>
+            <button onClick={() => setSelectedOrder(null)} style={{ background: '#6c757d', fontSize: '12px', padding: '2px 6px' }}>← Назад</button>
+          </div>
+          <p><strong>Статус:</strong> {selectedOrder.status}</p>
+          <p><strong>Итог:</strong> {selectedOrder.total_price} ₽</p>
+          <p><strong>Создан:</strong> {new Date(selectedOrder.created_at).toLocaleString('ru-RU')}</p>
+
+          <h4>Позиции:</h4>
+          {orderItems.length > 0 ? (
+            <table style={{ width: '100%', marginTop: '8px' }}>
+              <thead><tr><th>Позиция</th></tr></thead>
+              <tbody>
+                {orderItems.map(item => (
+                  <tr key={item.id}>
+                    <td>{getItemName(item.dish_id, item.bar_item_id)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p>Нет позиций</p>
+          )}
+
+          <OrderEditForm
+            order={selectedOrder}
+            onUpdate={handleUpdate}
+          />
+        </div>
+      )}
+
+      {/* Список заказов */}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Стол</th>
+            <th>Статус</th>
+            <th>Итог</th>
+            <th>Дата</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map(o => (
+            <tr key={o.id}>
+              <td>{o.id}</td>
+              <td>{o.table_number || '—'}</td>
+              <td>{o.status}</td>
+              <td>{o.total_price || 0} ₽</td>
+              <td>{new Date(o.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+              <td>
+                <button
+                  onClick={() => setSelectedOrder(o)}
+                  style={{ fontSize: '12px', padding: '2px 6px', marginRight: '4px' }}
+                >
+                  📋 Детали
+                </button>
+                <button
+                  onClick={() => handleDelete(o.id)}
+                  style={{ fontSize: '12px', padding: '2px 6px', background: '#dc3545' }}
+                >
+                  🗑️ Удалить
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+//============================================================================
 
     const StockTab = () => <div className="card"><h2>Остатки</h2><p>Данные по складу (mock)</p></div>;
-    const ReviewsTab = () => <div className="card"><h2>Отзывы</h2><p>Отзывы пользователей (mock)</p></div>;
+    
+//============================================================================
+	
+	const ReviewsTab = () => {
+  const [reviews, setReviews] = React.useState([
+    { id: 1, user_id: 1, order_id: 101, rating: 5, comment: "Вкусно и быстро!" },
+    { id: 2, user_id: 2, order_id: 102, rating: 4, comment: "Хорошо, но немного задержали." }
+  ]);
+
+  // Mock-данные для выпадающих списков
+  const mockUsers = [
+    { id: 1, name: "Анна" },
+    { id: 2, name: "Иван" },
+    { id: 3, name: "Мария" }
+  ];
+
+  const mockOrders = [
+    { id: 101, user_id: 1 },
+    { id: 102, user_id: 2 },
+    { id: 103, user_id: 3 }
+  ];
+
+  const [editingReview, setEditingReview] = React.useState(null);
+  const [showForm, setShowForm] = React.useState(false);
+
+  const nextId = React.useMemo(() => Math.max(0, ...reviews.map(r => r.id)) + 1, [reviews]);
+
+  const handleSave = (review) => {
+    if (editingReview) {
+      setReviews(reviews.map(r => r.id === review.id ? review : r));
+    } else {
+      setReviews([...reviews, { ...review, id: nextId }]);
+    }
+    setShowForm(false);
+    setEditingReview(null);
+  };
+
+  const handleDelete = (id) => {
+    if (confirm('Удалить отзыв?')) {
+      setReviews(reviews.filter(r => r.id !== id));
+    }
+  };
+
+  const handleEdit = (review) => {
+    setEditingReview(review);
+    setShowForm(true);
+  };
+
+  const handleCancel = () => {
+    setShowForm(false);
+    setEditingReview(null);
+  };
+
+  const getUserName = (userId) => {
+    const user = mockUsers.find(u => u.id === userId);
+    return user ? user.name : `Пользователь ${userId}`;
+  };
+
+  const getOrderInfo = (orderId) => {
+    const order = mockOrders.find(o => o.id === orderId);
+    return order ? `Заказ #${orderId}` : `Заказ ${orderId}`;
+  };
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2>Отзывы</h2>
+        <button onClick={() => setShowForm(true)}>➕ Добавить отзыв</button>
+      </div>
+
+      {showForm && (
+        <ReviewForm
+          review={editingReview}
+          users={mockUsers}
+          orders={mockOrders}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )}
+
+      <table>
+        <thead><tr><th>ID</th><th>Пользователь</th><th>Заказ</th><th>Оценка</th><th>Комментарий</th><th>Действия</th></tr></thead>
+        <tbody>
+          {reviews.map(r => (
+            <tr key={r.id}>
+              <td>{r.id}</td>
+              <td>{getUserName(r.user_id)}</td>
+              <td>{getOrderInfo(r.order_id)}</td>
+              <td>⭐ {r.rating}</td>
+              <td>{r.comment}</td>
+              <td>
+                <button onClick={() => handleEdit(r)} style={{fontSize: '12px', padding: '2px 6px', marginRight: '4px'}}>✏️</button>
+                <button onClick={() => handleDelete(r.id)} style={{fontSize: '12px', padding: '2px 6px', background: '#dc3545'}}>🗑️</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+//=====================================FORMS==================================
+//=====================================FORMS==================================
+//=====================================FORMS==================================
+//=====================================FORMS==================================
+//=====================================FORMS==================================
+
+const DishForm = ({ dish, categories, onSave, onCancel }) => {
+  const [data, setData] = React.useState({
+    name: dish?.name || '',
+    description: dish?.description || '',
+    price: dish?.price || '',
+    category_id: dish?.category_id || (categories.length > 0 ? categories[0].id : ''),
+    is_available: dish?.is_available ?? true
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const payload = {
+      name: data.name.trim(),
+      description: data.description.trim() || null,
+      price: parseFloat(data.price),
+      category_id: parseInt(data.category_id),
+      is_available: data.is_available
+    };
+
+    if (!payload.name || isNaN(payload.price) || !payload.category_id) {
+      alert('Заполните название, цену и категорию');
+      return;
+    }
+
+    onSave(payload);
+  };
+
+  return (
+    <div style={{ marginBottom: '16px', padding: '12px', border: '1px solid #ddd', borderRadius: '6px', background: '#f9f9f9' }}>
+      <h3>{dish ? 'Редактировать блюдо' : 'Новое блюдо'}</h3>
+      <form onSubmit={handleSubmit}>
+        <div><input name="name" placeholder="Название *" value={data.name} onChange={handleChange} required /></div>
+        <div><textarea name="description" placeholder="Описание" value={data.description} onChange={handleChange} rows="2" style={{width:'100%'}} /></div>
+        <div><input name="price" type="number" step="0.01" placeholder="Цена *" value={data.price} onChange={handleChange} required /></div>
+        
+        <div>
+          <select name="category_id" value={data.category_id} onChange={handleChange} required style={{width:'100%', padding:'6px', marginTop:'4px'}}>
+            <option value="">— Категория —</option>
+            {categories.map(cat => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+        </div>
+        
+        <label style={{ display: 'block', marginTop: '8px' }}>
+          <input name="is_available" type="checkbox" checked={data.is_available} onChange={handleChange} />
+          Доступно
+        </label>
+
+        <div style={{ marginTop: '12px' }}>
+          <button type="submit">Сохранить</button>
+          <button type="button" onClick={onCancel} style={{ background: '#6c757d', marginLeft: '8px' }}>Отмена</button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+//============================================================================
+
+const BarItemForm = ({ item, onSave, onCancel }) => {
+  const [data, setData] = React.useState({
+    name: item?.name || '',
+    description: item?.description || '',
+    price: item?.price || '',
+    is_alcoholic: item?.is_alcoholic ?? false,
+    strength: item?.strength || '',
+    is_available: item?.is_available ?? true
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const payload = {
+      name: data.name.trim(),
+      description: data.description.trim() || null,
+      price: parseFloat(data.price),
+      is_alcoholic: data.is_alcoholic,
+      strength: data.strength ? parseFloat(data.strength) : null,
+      is_available: data.is_available
+    };
+
+    if (!payload.name || isNaN(payload.price)) {
+      alert('Заполните название и цену');
+      return;
+    }
+
+    onSave(payload);
+  };
+
+  return (
+    <div style={{ marginBottom: '16px', padding: '12px', border: '1px solid #ddd', borderRadius: '6px', background: '#f9f9f9' }}>
+      <h3>{item ? 'Редактировать напиток' : 'Новый напиток'}</h3>
+      <form onSubmit={handleSubmit}>
+        <div><input name="name" placeholder="Название *" value={data.name} onChange={handleChange} required /></div>
+        <div><textarea name="description" placeholder="Описание" value={data.description} onChange={handleChange} rows="2" style={{width:'100%'}} /></div>
+        <div><input name="price" type="number" step="0.01" placeholder="Цена *" value={data.price} onChange={handleChange} required /></div>
+        
+        <label style={{ display: 'block', marginTop: '8px' }}>
+          <input name="is_alcoholic" type="checkbox" checked={data.is_alcoholic} onChange={handleChange} />
+          Алкогольный
+        </label>
+
+        <div><input name="strength" type="number" step="0.01" placeholder="Крепость (например, 40.0)" value={data.strength} onChange={handleChange} /></div>
+        
+        <label style={{ display: 'block', marginTop: '8px' }}>
+          <input name="is_available" type="checkbox" checked={data.is_available} onChange={handleChange} />
+          Доступно
+        </label>
+
+        <div style={{ marginTop: '12px' }}>
+          <button type="submit">Сохранить</button>
+          <button type="button" onClick={onCancel} style={{ background: '#6c757d', marginLeft: '8px' }}>Отмена</button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+//============================================================================
+
+const IngredientForm = ({ item, onSave, onCancel }) => {
+  const [data, setData] = React.useState({
+    name: item?.name || '',
+    unit: item?.unit || '',
+    current_stock: item?.current_stock || '',
+    min_stock_level: item?.min_stock_level || ''
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const payload = {
+      name: data.name.trim(),
+      unit: data.unit.trim(),
+      current_stock: data.current_stock ? parseFloat(data.current_stock) : 0,
+      min_stock_level: data.min_stock_level ? parseFloat(data.min_stock_level) : 0
+    };
+
+    if (!payload.name || !payload.unit) {
+      alert('Заполните название и единицу измерения');
+      return;
+    }
+
+    onSave(payload);
+  };
+
+  return (
+    <div style={{ marginBottom: '16px', padding: '12px', border: '1px solid #ddd', borderRadius: '6px', background: '#f9f9f9' }}>
+      <h3>{item ? 'Редактировать ингредиент' : 'Новый ингредиент'}</h3>
+      <form onSubmit={handleSubmit}>
+        <div><input name="name" placeholder="Название *" value={data.name} onChange={handleChange} required /></div>
+        <div><input name="unit" placeholder="Единица измерения (кг, л, шт и т.д.) *" value={data.unit} onChange={handleChange} required /></div>
+        <div><input name="current_stock" type="number" step="0.001" placeholder="Текущий остаток" value={data.current_stock} onChange={handleChange} /></div>
+        <div><input name="min_stock_level" type="number" step="0.001" placeholder="Минимальный уровень" value={data.min_stock_level} onChange={handleChange} /></div>
+
+        <div style={{ marginTop: '12px' }}>
+          <button type="submit">Сохранить</button>
+          <button type="button" onClick={onCancel} style={{ background: '#6c757d', marginLeft: '8px' }}>Отмена</button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+//============================================================================
+
+const OrderEditForm = ({ order, onUpdate }) => {
+  const [data, setData] = React.useState({
+    status: order.status,
+    table_number: order.table_number || '',
+    total_price: order.total_price || ''
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const payload = {
+      id: order.id,
+      status: data.status.trim(),
+      table_number: data.table_number ? parseInt(data.table_number) : null,
+      total_price: data.total_price ? parseFloat(data.total_price) : 0
+    };
+    onUpdate(payload);
+  };
+
+  return (
+    <div style={{ marginTop: '12px' }}>
+      <h4>Редактировать заказ</h4>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select name="status" value={data.status} onChange={handleChange} style={{ padding: '4px' }}>
+          <option value="новый">Новый</option>
+          <option value="готовится">Готовится</option>
+          <option value="готов">Готов</option>
+          <option value="выдан">Выдан</option>
+          <option value="отменён">Отменён</option>
+        </select>
+        <input name="table_number" type="number" placeholder="Стол" value={data.table_number} onChange={handleChange} style={{ width: '80px', padding: '4px' }} />
+        <input name="total_price" type="number" step="0.01" placeholder="Итог" value={data.total_price} onChange={handleChange} style={{ width: '100px', padding: '4px' }} />
+        <button type="submit" style={{ padding: '4px 8px' }}>Сохранить</button>
+      </form>
+    </div>
+  );
+};
+
+//============================================================================
+
+
+
+//============================================================================
+
+
+
+//============================================================================
+
+const ReviewForm = ({ review, users, orders, onSave, onCancel }) => {
+  const [data, setData] = React.useState({
+    user_id: review?.user_id || (users.length > 0 ? users[0].id : ''),
+    order_id: review?.order_id || (orders.length > 0 ? orders[0].id : ''),
+    rating: review?.rating || 5,
+    comment: review?.comment || ''
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newReview = {
+      ...review,
+      user_id: parseInt(data.user_id) || 0,
+      order_id: parseInt(data.order_id) || 0,
+      rating: parseInt(data.rating) || 5,
+      comment: data.comment.trim()
+    };
+    if (!newReview.user_id || !newReview.order_id || newReview.rating < 1 || newReview.rating > 5) {
+      alert('Укажите пользователя, заказ и оценку от 1 до 5');
+      return;
+    }
+    onSave(newReview);
+  };
+
+  return (
+    <div style={{ marginBottom: '16px', padding: '12px', border: '1px solid #ddd', borderRadius: '6px', background: '#f9f9f9' }}>
+      <h3>{review ? 'Редактировать отзыв' : 'Новый отзыв'}</h3>
+      <form onSubmit={handleSubmit}>
+        <div>
+          <select name="user_id" value={data.user_id} onChange={handleChange} required style={{width: '100%', padding: '6px', marginTop: '4px'}}>
+            <option value="">— Пользователь —</option>
+            {users.map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <select name="order_id" value={data.order_id} onChange={handleChange} required style={{width: '100%', padding: '6px', marginTop: '4px'}}>
+            <option value="">— Заказ —</option>
+            {orders.map(o => (
+              <option key={o.id} value={o.id}>Заказ #{o.id}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label>Оценка:</label>
+          <select name="rating" value={data.rating} onChange={handleChange} style={{marginLeft: '8px'}}>
+            {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} ⭐</option>)}
+          </select>
+        </div>
+        <div>
+          <textarea
+            name="comment"
+            placeholder="Комментарий"
+            value={data.comment}
+            onChange={handleChange}
+            rows="3"
+            style={{width: '100%', marginTop: '8px'}}
+            required
+          />
+        </div>
+        <div style={{ marginTop: '12px' }}>
+          <button type="submit">Сохранить</button>
+          <button type="button" onClick={onCancel} style={{ background: '#6c757d', marginLeft: '8px' }}>Отмена</button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+//============================================================================
 
     // ============= ОСНОВНОЕ ПРИЛОЖЕНИЕ =============
     const App = () => {
