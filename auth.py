@@ -1,215 +1,143 @@
+import os
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Dict
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, APIRouter
 from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr, validator
-import jwt
+from pydantic import BaseModel, EmailStr, field_validator
+from dotenv import load_dotenv, find_dotenv
+from sqlalchemy import text
+
+from database import db
+
+# Загружаем переменные окружения (.env / env / env.example)
+dotenv_path = (
+    find_dotenv(usecwd=True)
+    or find_dotenv("env", usecwd=True)
+    or find_dotenv("env.example", usecwd=True)
+)
+if dotenv_path:
+    load_dotenv(dotenv_path)
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
 pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
-class UserBase(BaseModel):
-    username: str
+auth_router = APIRouter(prefix="/auth", tags=["Аутентификация"])
+
+
+class RegisterRequest(BaseModel):
     email: EmailStr
-
-
-class UserCreate(UserBase):
     password: str
-    birth_date: str  # Формат: "YYYY-MM-DD"
 
-    @validator('username')
-    def validate_username(cls, v):
-        if len(v) < 3 or len(v) > 18:
-            raise ValueError('Имя пользователя должно быть от 3 до 18 символов')
-        return v
-
-    @validator('password')
-    def validate_password(cls, v):
-        if len(v) < 3 or len(v) > 18:
-            raise ValueError('Пароль должен быть от 3 до 18 символов')
-        if len(v.encode('utf-8')) > 72:
-            raise ValueError('Пароль слишком длинный (более 72 байт)')
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("Пароль должен быть не менее 6 символов")
         return v
 
 
-class UserLogin(BaseModel):
-    username: str
+class LoginRequest(BaseModel):
+    email: EmailStr
     password: str
 
 
-class UserResponse(UserBase):
-    id: str
-    birth_date: str
-    created_at: str
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+class AuthResponse(BaseModel):
+    success: bool
     user_id: str
-    username: str
+    email: EmailStr
+    token: str
 
-users_db = {}
 
-SECRET_KEY = "your-secret-key-for-jwt-tokens"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+def _hash_password(password: str) -> str:
+    return pwd_context.hash(password)
 
-class AuthService:
-    @staticmethod
-    def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-        to_encode = data.copy()
-        if expires_delta:
-            expire = datetime.now(timezone.utc) + expires_delta
-        else:
-            expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
-        to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-        return encoded_jwt
+def _verify_password(password: str, hashed: str) -> bool:
+    return pwd_context.verify(password, hashed)
 
-    @staticmethod
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        return pwd_context.verify(plain_password, hashed_password)
 
-    @staticmethod
-    def get_password_hash(password: str) -> str:
-        return pwd_context.hash(password)
+def _issue_token(user_id: str, email: str) -> str:
+    return pwd_context.hash(f"{user_id}:{email}:{SECRET_KEY}")[:32]
 
-    @staticmethod
-    def register_user(user_data: UserCreate) -> dict:
-        if user_data.username in users_db:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пользователь с таким именем уже существует"
-            )
 
-        for user in users_db.values():
-            if user['email'] == user_data.email:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Пользователь с таким email уже существует"
+def _ensure_users_table():
+    if db._table_exists("users"):
+        return
+    with db.engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    login TEXT UNIQUE,
+                    password_hash TEXT,
+                    birth_date DATE,
+                    diet_type TEXT,
+                    meal_style TEXT
                 )
-
-        user_id = str(uuid.uuid4())
-        hashed_password = AuthService.get_password_hash(user_data.password)
-
-        users_db[user_data.username] = {
-            'id': user_id,
-            'username': user_data.username,
-            'email': user_data.email,
-            'hashed_password': hashed_password,
-            'birth_date': user_data.birth_date,
-            'created_at': datetime.now().isoformat()
-        }
-
-        access_token = AuthService.create_access_token(
-            data={"sub": user_data.username, "user_id": user_id}
+                """
+            )
         )
 
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user_id": user_id,
-            "username": user_data.username
-        }
 
-    @staticmethod
-    def authenticate_user(username: str, password: str) -> Optional[dict]:
-        if username not in users_db:
-            return None
+def _get_user_by_email(email: str) -> Optional[Dict[str, str]]:
+    _ensure_users_table()
+    with db.engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT id, login, password_hash FROM users WHERE login = :email"),
+            {"email": email},
+        ).fetchone()
+        return dict(row._mapping) if row else None
 
-        user = users_db[username]
-        if not AuthService.verify_password(password, user['hashed_password']):
-            return None
 
-        return user
+def _create_user(email: str, password_hash: str) -> Dict[str, str]:
+    _ensure_users_table()
+    with db.engine.begin() as conn:
+        result = conn.execute(
+            text(
+                """
+                INSERT INTO users (login, password_hash)
+                VALUES (:email, :password_hash)
+                """
+            ),
+            {"email": email, "password_hash": password_hash},
+        )
+        user_id = result.lastrowid
+    return {"id": user_id, "login": email, "password_hash": password_hash}
 
-    @staticmethod
-    def login_user(login_data: UserLogin) -> dict:
-        user = AuthService.authenticate_user(login_data.username, login_data.password)
 
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверное имя пользователя или пароль",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+@auth_router.post("/register", response_model=AuthResponse, summary="Регистрация")
+def register_user(payload: RegisterRequest):
+    email = payload.email.lower()
 
-        access_token = AuthService.create_access_token(
-            data={"sub": user['username'], "user_id": user['id']}
+    existing = _get_user_by_email(email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пользователь с таким email уже существует",
         )
 
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user_id": user['id'],
-            "username": user['username']
-        }
+    password_hash = _hash_password(payload.password)
+    user_row = _create_user(email, password_hash)
+    user_id = str(user_row["id"])
 
-    @staticmethod
-    def get_current_user(token: str):
-        try:
-            if isinstance(token, bytes):
-                token = token.decode('utf-8')
-
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            username: str = payload.get("sub")
-            user_id: str = payload.get("user_id")
-
-            if username is None or user_id is None:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Невалидный токен"
-                )
-
-            if username not in users_db:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Пользователь не найден"
-                )
-
-            user = users_db[username]
-            if user['id'] != user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Невалидный токен"
-                )
-
-            return user
-
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Токен истёк"
-            )
-        except jwt.InvalidTokenError:  # ← ИСПРАВЛЕНО!
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Невалидный токен"
-            )
-
-    @staticmethod
-    def get_user_profile(username: str) -> dict:
-        if username not in users_db:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Пользователь не найден"
-            )
-
-        user = users_db[username]
-        return {
-            "id": user['id'],
-            "username": user['username'],
-            "email": user['email'],
-            "birth_date": user['birth_date'],
-            "created_at": user['created_at']
-        }
-
-    @staticmethod
-    def get_all_users() -> list:
-        return list(users_db.values())
+    token = _issue_token(user_id, email)
+    return AuthResponse(success=True, user_id=user_id, email=email, token=token)
 
 
-auth_service = AuthService()
+@auth_router.post("/login", response_model=AuthResponse, summary="Вход")
+def login_user(payload: LoginRequest):
+    email = payload.email.lower()
+    user = _get_user_by_email(email)
+    if not user or not _verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный email или пароль",
+        )
+
+    user_id = str(user["id"])
+    token = _issue_token(user_id, email)
+    return AuthResponse(success=True, user_id=user_id, email=email, token=token)

@@ -6,6 +6,10 @@ from sqlalchemy.orm import sessionmaker
 import sqlite3
 import hashlib
 import secrets
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из .env при старте
+load_dotenv()
 
 class Database:
     # Хешируем пароли
@@ -53,6 +57,8 @@ class Database:
         return has_lower and has_upper and has_digit
 
     def __init__(self, db_path: str = None):
+        # Приоритет: DATABASE_URL из окружения, иначе путь к файлу
+        self.database_url = os.getenv("DATABASE_URL")
         self.db_path = self._find_database_file(db_path)
         self.engine = None
         self.Session = None
@@ -81,7 +87,11 @@ class Database:
 
     def _init_database(self):
         try:
-            self.engine = create_engine(f"sqlite:///{self.db_path}")
+            if self.database_url:
+                self.engine = create_engine(self.database_url)
+            else:
+                self.engine = create_engine(f"sqlite:///{self.db_path}")
+
             self.Session = sessionmaker(bind=self.engine)
 
             with self.engine.connect() as conn:
@@ -446,8 +456,8 @@ class Database:
                     query += " AND category_id = :category_id"
                     params["category_id"] = category_id
 
-                if available_only and self._column_exists('dishes', 'is_available'):
-                    query += " AND is_available = 1"
+                ''' if available_only and self._column_exists('dishes', 'is_available'):
+                    query += " AND is_available = 1" '''
 
                 query += " ORDER BY name"
 
@@ -640,6 +650,84 @@ class Database:
             print(f"Ошибка при получении напитка: {e}")
             return None
 
+    def create_bar_item(self, item_data: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            # Приводим булевы поля к int для SQLite
+            for flag in ('is_available', 'is_alcoholic'):
+                if flag in item_data:
+                    item_data[flag] = 1 if item_data[flag] else 0
+
+            with self.engine.connect() as conn:
+                columns = self._get_table_columns('bar_items')
+                filtered_data = {
+                    k: v for k, v in item_data.items()
+                    if k in columns and v is not None
+                }
+
+                columns_str = ', '.join(filtered_data.keys())
+                values_str = ', '.join([f':{k}' for k in filtered_data.keys()])
+
+                query = f"INSERT INTO bar_items ({columns_str}) VALUES ({values_str})"
+                result = conn.execute(text(query), filtered_data)
+                conn.commit()
+
+                item_id = result.lastrowid
+                return self.get_bar_item_by_id(item_id) or item_data
+        except Exception as e:
+            print(f"Ошибка при создании напитка: {e}")
+            raise
+
+    def update_bar_item(self, item_id: int, item_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            if not self._table_exists('bar_items'):
+                return None
+
+            # Приводим булевы поля к int для SQLite
+            for flag in ('is_available', 'is_alcoholic'):
+                if flag in item_data:
+                    item_data[flag] = 1 if item_data[flag] else 0
+
+            update_data = {k: v for k, v in item_data.items() if v is not None}
+            if not update_data:
+                return self.get_bar_item_by_id(item_id)
+
+            columns = self._get_table_columns('bar_items')
+            valid_update_data = {k: v for k, v in update_data.items() if k in columns}
+
+            if not valid_update_data:
+                return self.get_bar_item_by_id(item_id)
+
+            with self.engine.connect() as conn:
+                set_parts = [f"{k} = :{k}" for k in valid_update_data.keys()]
+                params = {"id": item_id, **valid_update_data}
+
+                query = f"UPDATE bar_items SET {', '.join(set_parts)} WHERE id = :id"
+                result = conn.execute(text(query), params)
+                conn.commit()
+
+                if result.rowcount > 0:
+                    return self.get_bar_item_by_id(item_id)
+                return None
+        except Exception as e:
+            print(f"Ошибка при обновлении напитка: {e}")
+            raise
+
+    def delete_bar_item(self, item_id: int) -> bool:
+        try:
+            if not self._table_exists('bar_items'):
+                return False
+
+            with self.engine.connect() as conn:
+                result = conn.execute(
+                    text("DELETE FROM bar_items WHERE id = :id"),
+                    {"id": item_id}
+                )
+                conn.commit()
+                return result.rowcount > 0
+        except Exception as e:
+            print(f"Ошибка при удалении напитка: {e}")
+            return False
+
     def get_all_ingredients(self) -> List[Dict[str, Any]]:
         try:
             if not self._table_exists('ingredients'):
@@ -706,6 +794,67 @@ class Database:
             print(f"Ошибка при создании ингредиента: {e}")
             raise
 
+    def update_ingredient(self, ingredient_id: int, ingredient_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            if not self._table_exists('ingredients'):
+                return None
+
+            # Приводим числовые поля к float
+            for numeric in ('current_stock', 'min_stock_level'):
+                if numeric in ingredient_data and ingredient_data[numeric] is not None:
+                    ingredient_data[numeric] = float(ingredient_data[numeric])
+
+            update_data = {k: v for k, v in ingredient_data.items() if v is not None}
+            if not update_data:
+                return self.get_all_ingredients()
+
+            columns = self._get_table_columns('ingredients')
+            valid_update_data = {k: v for k, v in update_data.items() if k in columns}
+
+            if not valid_update_data:
+                return self.get_all_ingredients()
+
+            with self.engine.connect() as conn:
+                set_parts = [f"{k} = :{k}" for k in valid_update_data.keys()]
+                params = {"id": ingredient_id, **valid_update_data}
+
+                query = f"UPDATE ingredients SET {', '.join(set_parts)} WHERE id = :id"
+                result = conn.execute(text(query), params)
+                conn.commit()
+
+                if result.rowcount > 0:
+                    # Возвращаем обновлённый объект
+                    result_row = conn.execute(
+                        text("SELECT * FROM ingredients WHERE id = :id"),
+                        {"id": ingredient_id}
+                    ).fetchone()
+                    if result_row:
+                        ingredient = dict(result_row._mapping)
+                        if 'current_stock' in ingredient:
+                            ingredient['current_stock'] = float(ingredient.get('current_stock', 0))
+                        if 'min_stock_level' in ingredient:
+                            ingredient['min_stock_level'] = float(ingredient.get('min_stock_level', 0))
+                        return ingredient
+                return None
+        except Exception as e:
+            print(f"Ошибка при обновлении ингредиента: {e}")
+            raise
+
+    def delete_ingredient(self, ingredient_id: int) -> bool:
+        try:
+            if not self._table_exists('ingredients'):
+                return False
+
+            with self.engine.connect() as conn:
+                result = conn.execute(
+                    text("DELETE FROM ingredients WHERE id = :id"),
+                    {"id": ingredient_id}
+                )
+                conn.commit()
+                return result.rowcount > 0
+        except Exception as e:
+            print(f"Ошибка при удалении ингредиента: {e}")
+            return False
 
     def get_all_tables(self) -> List[str]:
         try:

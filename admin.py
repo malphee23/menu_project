@@ -202,14 +202,15 @@ async def admin_login(login_data: AdminLoginRequest):
 @admin_router.get("/admins",
                   response_model=List[AdminUserResponse],
                   summary="Получить всех администраторов",
-                  description="Возвращает список всех администраторов системы без паролей")
+                  description="Возвращает список всех администраторов системы без паролей"
+)
+
 async def get_all_admin_users():
     try:
         admins = db.get_all_admin_users()
         return admins
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
-
 
 @admin_router.post("/admins",
                    response_model=AdminUserResponse,
@@ -397,7 +398,6 @@ async def get_bar_item(item_id: int):
         raise HTTPException(status_code=404, detail="Напиток не найден")
     return item
 
-
 @admin_router.post("/bar-items", response_model=BarItemResponse, summary="Создать напиток")
 async def create_bar_item(item: BarItemCreate):
     try:
@@ -405,7 +405,6 @@ async def create_bar_item(item: BarItemCreate):
         return created_item
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 @admin_router.put("/bar-items/{item_id}", response_model=BarItemResponse, summary="Изменить напиток")
 async def update_bar_item(item_id: int, item: BarItemUpdate):
@@ -418,14 +417,12 @@ async def update_bar_item(item_id: int, item: BarItemUpdate):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-
 @admin_router.delete("/bar-items/{item_id}", summary="Удалить напиток")
 async def delete_bar_item(item_id: int):
     success = db.delete_bar_item(item_id)
     if not success:
         raise HTTPException(status_code=404, detail="Напиток не найден")
     return {"success": True, "message": f"Напиток с ID {item_id} удален"}
-
 
 # ========== КАТЕГОРИИ ==========
 @admin_router.get("/categories", response_model=List[Category], summary="Получить все категории")
@@ -436,7 +433,6 @@ async def get_all_categories():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @admin_router.get("/visit_categories", summary="Получить категорию")
 async def get_visit_categories():
     try:
@@ -444,7 +440,6 @@ async def get_visit_categories():
         return categories
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @admin_router.get("/menu/all", summary="Получить всё меню")
 async def get_complete_menu():
@@ -470,7 +465,6 @@ async def get_all_ingredients():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @admin_router.post("/ingredients", response_model=IngredientResponse, summary="Создать ингредиент")
 async def create_ingredient(ingredient: IngredientCreate):
     try:
@@ -478,7 +472,6 @@ async def create_ingredient(ingredient: IngredientCreate):
         return created_ingredient
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 @admin_router.put("/ingredients/{ingredient_id}", summary="Изменить ингредиент")
 async def update_ingredient(ingredient_id: int, ingredient: IngredientUpdate):
@@ -490,7 +483,6 @@ async def update_ingredient(ingredient_id: int, ingredient: IngredientUpdate):
         return updated_ingredient
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 @admin_router.delete("/ingredients/{ingredient_id}", summary="Удалить ингредиент")
 async def delete_ingredient(ingredient_id: int):
@@ -542,7 +534,6 @@ async def get_all_submissions():
         "active_sessions": len([f for f in session_flags.values() if f])
     }
 
-
 @admin_router.get("/submissions/{table_number}", summary="Получить заявку по номеру стола")
 async def get_table_submission(table_number: int):
     table_subs = [s for s in visitor_submissions if s["table_number"] == table_number]
@@ -554,7 +545,6 @@ async def get_table_submission(table_number: int):
         "session_active": session_status,
         "has_active_order": len(table_subs) > 0
     }
-
 
 @admin_router.get("/tables/status", summary="Получить статус всех столов")
 async def get_tables_status():
@@ -579,7 +569,6 @@ async def get_tables_status():
         "active_sessions": len([f for f in session_flags.values() if f]),
         "total_orders": len(visitor_submissions)
     }
-
 
 @admin_router.put("/complete/{table_number}", summary="Сделать стол обслуженным")
 async def mark_table_completed(table_number: int):

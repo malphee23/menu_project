@@ -3,20 +3,27 @@
 # Ip и порт будет показан в терминале или cmd
 # . venv/Scripts/activate
 
+import os
 import uuid
 from datetime import datetime
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
+from dotenv import load_dotenv, find_dotenv
 
 from mobile import mobile_router
 from admin import admin_router
 from sofia_modules import orders_router, payments_router, reviews_router, kitchen_router
+from auth import auth_router
 
 from storage import visitor_submissions, session_flags
 
 from starlette.middleware.cors import CORSMiddleware
+
+dotenv_path = find_dotenv("env.example", usecwd=True)
+if dotenv_path:
+    load_dotenv(dotenv_path)
 
 app = FastAPI(
     title="Restaurant API",
@@ -37,6 +44,7 @@ app.include_router(orders_router)
 app.include_router(payments_router)
 app.include_router(reviews_router)
 app.include_router(kitchen_router)
+app.include_router(auth_router)
 
 class VisitPurpose(BaseModel):
     purpose: str
@@ -117,4 +125,6 @@ async def submit_visit_info(data: VisitorData):
     }
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="26.234.56.246", port=8000, reload=True)
+    app_host = os.getenv("APP_HOST", "127.0.0.1")
+    app_port = int(os.getenv("APP_PORT", "8000"))
+    uvicorn.run("main:app", host=app_host, port=app_port, reload=True)
