@@ -17,13 +17,20 @@ from admin import admin_router
 from sofia_modules import orders_router, payments_router, reviews_router, kitchen_router
 from auth import auth_router
 
-from storage import visitor_submissions, session_flags
+from storage import *
 
 from starlette.middleware.cors import CORSMiddleware
 
-dotenv_path = find_dotenv("env.example", usecwd=True)
+dotenv_path = (
+    find_dotenv(usecwd=True)
+    or find_dotenv("env", usecwd=True)
+    or find_dotenv("env.example", usecwd=True)
+)
 if dotenv_path:
     load_dotenv(dotenv_path)
+    print(f"Loaded .env from: {dotenv_path}")  # для отладки
+else:
+    print("No .env file found!")
 
 app = FastAPI(
     title="Restaurant API",

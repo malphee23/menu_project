@@ -1,9 +1,10 @@
 import os
-import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 
-from fastapi import HTTPException, status, APIRouter
+from fastapi import HTTPException, status, APIRouter, Depends
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, field_validator
 from dotenv import load_dotenv, find_dotenv
@@ -11,7 +12,7 @@ from sqlalchemy import text
 
 from database import db
 
-# Загружаем переменные окружения (.env / env / env.example)
+# Загружаем переменные окружения
 dotenv_path = (
     find_dotenv(usecwd=True)
     or find_dotenv("env", usecwd=True)
@@ -21,8 +22,11 @@ if dotenv_path:
     load_dotenv(dotenv_path)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
 pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 auth_router = APIRouter(prefix="/auth", tags=["Аутентификация"])
 
@@ -48,7 +52,8 @@ class AuthResponse(BaseModel):
     success: bool
     user_id: str
     email: EmailStr
-    token: str
+    access_token: str  # Изменено с `token` на `access_token` (стандартное имя)
+    token_type: str = "bearer"
 
 
 def _hash_password(password: str) -> str:
@@ -59,8 +64,15 @@ def _verify_password(password: str, hashed: str) -> bool:
     return pwd_context.verify(password, hashed)
 
 
-def _issue_token(user_id: str, email: str) -> str:
-    return pwd_context.hash(f"{user_id}:{email}:{SECRET_KEY}")[:32]
+def _create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
 
 def _ensure_users_table():
@@ -112,9 +124,7 @@ def _create_user(email: str, password_hash: str) -> Dict[str, str]:
 @auth_router.post("/register", response_model=AuthResponse, summary="Регистрация")
 def register_user(payload: RegisterRequest):
     email = payload.email.lower()
-
-    existing = _get_user_by_email(email)
-    if existing:
+    if _get_user_by_email(email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Пользователь с таким email уже существует",
@@ -124,8 +134,18 @@ def register_user(payload: RegisterRequest):
     user_row = _create_user(email, password_hash)
     user_id = str(user_row["id"])
 
-    token = _issue_token(user_id, email)
-    return AuthResponse(success=True, user_id=user_id, email=email, token=token)
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = _create_access_token(
+        data={"sub": user_id, "email": email}, expires_delta=access_token_expires
+    )
+
+    return AuthResponse(
+        success=True,
+        user_id=user_id,
+        email=email,
+        access_token=access_token,
+        token_type="bearer"
+    )
 
 
 @auth_router.post("/login", response_model=AuthResponse, summary="Вход")
@@ -139,5 +159,36 @@ def login_user(payload: LoginRequest):
         )
 
     user_id = str(user["id"])
-    token = _issue_token(user_id, email)
-    return AuthResponse(success=True, user_id=user_id, email=email, token=token)
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = _create_access_token(
+        data={"sub": user_id, "email": email}, expires_delta=access_token_expires
+    )
+
+    return AuthResponse(
+        success=True,
+        user_id=user_id,
+        email=email,
+        access_token=access_token,
+        token_type="bearer"
+    )
+
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Не удалось проверить учетные данные",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        email: str = payload.get("email")
+        if user_id is None or email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = _get_user_by_email(email)
+    if user is None:
+        raise credentials_exception
+
+    return {"user_id": user_id, "email": email}
