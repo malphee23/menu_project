@@ -3,6 +3,8 @@
 # Ip и порт будет показан в терминале или cmd
 # . venv/Scripts/activate
 
+# from gigachat import GigaChat
+import requests
 import os
 import uuid
 from datetime import datetime
@@ -11,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from dotenv import load_dotenv, find_dotenv
+import urllib3
 
 from mobile import mobile_router
 from admin import admin_router
@@ -20,6 +23,8 @@ from auth import auth_router
 from storage import *
 
 from starlette.middleware.cors import CORSMiddleware
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 dotenv_path = (
     find_dotenv(usecwd=True)
@@ -36,6 +41,45 @@ app = FastAPI(
     title="Restaurant API",
     description="API for restaurant service",
 )
+
+class GigaChatClient:
+    def __init__(self, credentials: str):
+        self.credentials = credentials
+        self.access_token = None
+        self._get_token()
+
+    def _get_token(self):
+        url = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+        payload = {"scope": "GIGACHAT_API_PERS"}
+        headers = {
+            "Authorization": f"Basic {self.credentials}",
+            "RqUID": str(uuid.uuid4()),
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+        response = requests.post(url, data=payload, headers=headers, verify=False)
+        response.raise_for_status()
+        self.access_token = response.json()["access_token"]
+
+    def send_message(self, messages: list):
+        url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "GigaChat",
+            "messages": messages
+        }
+        response = requests.post(url, json=payload, headers=headers, verify=False)
+        if response.status_code == 401:
+            self._get_token()
+            headers["Authorization"] = f"Bearer {self.access_token}"
+            response = requests.post(url, json=payload, headers=headers, verify=False)
+
+        response.raise_for_status()
+        return response.json()
+
+GIGA_CLIENT = GigaChatClient(credentials=os.getenv("GIGACHAT_CREDENTIALS"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,6 +115,17 @@ class VisitorData(BaseModel):
     people_count: int
 
 # Сессии и заказы
+
+@app.post("/gigachat/")
+async def chat_with_gigachat(user_message: str):
+    try:
+        messages = [{"role": "user", "content": user_message}]
+        response = GIGA_CLIENT.send_message(messages)
+        return {
+            "response": response["choices"][0]["message"]["content"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"GigaChat error: {str(e)}")
 
 @app.post("/startflag/{table_number}", tags=["Сессии"])
 def start_session(table_number: int):

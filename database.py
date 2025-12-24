@@ -59,7 +59,7 @@ class Database:
                     self.database_url,
                     connect_args={"sslmode": "require"},
                     pool_pre_ping=True,
-                    pool_recycle=300
+                    pool_recycle=50
                 )
             else:
                 # Fallback на SQLite только если DATABASE_URL не задан
