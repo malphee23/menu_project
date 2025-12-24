@@ -55,7 +55,12 @@ class Database:
     def _init_database(self):
         try:
             if self.database_url:
-                self.engine = create_engine(self.database_url)
+                self.engine = create_engine(
+                    self.database_url,
+                    connect_args={"sslmode": "require"},
+                    pool_pre_ping=True,
+                    pool_recycle=300
+                )
             else:
                 # Fallback на SQLite только если DATABASE_URL не задан
                 db_path = "restaurant.db"
