@@ -20,10 +20,12 @@ from dotenv import load_dotenv, find_dotenv
 
 from mobile import mobile_router
 from admin import admin_router
+from menu import menu_router
 from sofia_modules import orders_router, payments_router, reviews_router, kitchen_router
 from auth import auth_router
 
 from storage import *
+from embedding_service import dish_vector_store, periodic_embeddings_refresh
 
 from starlette.middleware.cors import CORSMiddleware
 
@@ -96,6 +98,7 @@ app.add_middleware(
 )
 
 app.include_router(admin_router)
+app.include_router(menu_router)
 app.include_router(mobile_router)
 app.include_router(orders_router)
 app.include_router(payments_router)
@@ -169,7 +172,27 @@ def _normalize_recommendation_items(items: List[RawRecommendationItem]) -> List[
 async def chat_with_gigachat(user_message: str):
     raw_payload = None
     try:
-        messages = [{"role": "user", "content": user_message}]
+        top_k = max(1, min(query.top_k, 20))
+        context_dishes = []
+        if query.tags:
+            query_vector = dish_vector_store.embed_tags(query.tags)
+            context_dishes = dish_vector_store.search(query_vector, top_k=top_k)
+
+        context_text = dish_vector_store.format_context(context_dishes) if context_dishes else ""
+
+        system_prompt = (
+            "Ты помощник по меню ресторана. "
+            "Используй переданный список блюд как контекст. "
+            "Если контекст пустой, отвечай общими фразами без конкретных блюд."
+        )
+
+        if context_text:
+            system_prompt += f"\nКонтекст блюд:\n{context_text}"
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query.user_message},
+        ]
         response = GIGA_CLIENT.send_message(messages)
         raw_payload = response["choices"][0]["message"]["content"]
         parsed_payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
@@ -245,6 +268,12 @@ async def submit_visit_info(data: VisitorData):
         "table_number": data.table_number,
         "order_id": submission_id
     }
+
+@app.on_event("startup")
+async def startup_events():
+    refresh_interval = int(os.getenv("EMBEDDINGS_REFRESH_SECONDS", "3600"))
+    await dish_vector_store.rebuild_async()
+    asyncio.create_task(periodic_embeddings_refresh(refresh_interval))
 
 if __name__ == "__main__":
     app_host = os.getenv("APP_HOST", "127.0.0.1")
