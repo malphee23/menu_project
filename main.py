@@ -26,6 +26,7 @@ from auth import auth_router
 from database import db
 
 from storage import *
+from embedding_service import dish_vector_store, periodic_embeddings_refresh
 
 from starlette.middleware.cors import CORSMiddleware
 
@@ -216,13 +217,40 @@ def fetch_relevant_dishes(tags: List[str], allergies: List[str], restrictions: L
 
 # Сессии и заказы
 
+class MenuQuery(BaseModel):
+    user_message: str
+    tags: List[str] = []
+    top_k: int = 5
+
+
 @app.post("/gigachat/")
-async def chat_with_gigachat(user_message: str):
+async def chat_with_gigachat(query: MenuQuery):
     try:
-        messages = [{"role": "user", "content": user_message}]
+        top_k = max(1, min(query.top_k, 20))
+        context_dishes = []
+        if query.tags:
+            query_vector = dish_vector_store.embed_tags(query.tags)
+            context_dishes = dish_vector_store.search(query_vector, top_k=top_k)
+
+        context_text = dish_vector_store.format_context(context_dishes) if context_dishes else ""
+
+        system_prompt = (
+            "Ты помощник по меню ресторана. "
+            "Используй переданный список блюд как контекст. "
+            "Если контекст пустой, отвечай общими фразами без конкретных блюд."
+        )
+
+        if context_text:
+            system_prompt += f"\nКонтекст блюд:\n{context_text}"
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query.user_message},
+        ]
         response = GIGA_CLIENT.send_message(messages)
         return {
-            "response": response["choices"][0]["message"]["content"]
+            "response": response["choices"][0]["message"]["content"],
+            "context_used": context_dishes,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"GigaChat error: {str(e)}")
