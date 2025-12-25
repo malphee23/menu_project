@@ -21,6 +21,7 @@ import urllib3
 
 from mobile import mobile_router
 from admin import admin_router
+from menu import menu_router
 from sofia_modules import orders_router, payments_router, reviews_router, kitchen_router
 from auth import auth_router
 from database import db
@@ -42,6 +43,9 @@ if dotenv_path:
     print(f"Loaded .env from: {dotenv_path}")  # для отладки
 else:
     print("No .env file found!")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Restaurant API",
@@ -96,6 +100,7 @@ app.add_middleware(
 )
 
 app.include_router(admin_router)
+app.include_router(menu_router)
 app.include_router(mobile_router)
 app.include_router(orders_router)
 app.include_router(payments_router)
@@ -217,14 +222,44 @@ def fetch_relevant_dishes(tags: List[str], allergies: List[str], restrictions: L
 
 # Сессии и заказы
 
-class MenuQuery(BaseModel):
-    user_message: str
-    tags: List[str] = []
-    top_k: int = 5
+class RecommendationItem(BaseModel):
+    id: int | str
+    name: str
+    score: float = Field(..., ge=0.0, le=1.0)
 
 
-@app.post("/gigachat/")
-async def chat_with_gigachat(query: MenuQuery):
+class RecommendationResponse(BaseModel):
+    items: List[RecommendationItem]
+
+
+def _normalize_recommendation_items(items: List[RawRecommendationItem]) -> List[RecommendationItem]:
+    if not items:
+        return []
+
+    scores = [item.score for item in items]
+    min_score = min(scores)
+    max_score = max(scores)
+    should_scale = min_score < 0 or max_score > 1
+
+    normalized_items: List[RecommendationItem] = []
+    for item in items:
+        score = item.score
+        if should_scale and max_score != min_score:
+            score = (score - min_score) / (max_score - min_score)
+        elif should_scale and max_score == min_score:
+            score = 1.0 if score > 0 else 0.0
+
+        score = max(0.0, min(1.0, score))
+        normalized_items.append(RecommendationItem(id=item.id, name=item.name, score=score))
+
+    normalized_items.sort(key=lambda x: x.score, reverse=True)
+    return normalized_items
+
+# Сессии и заказы
+
+@app.post("/gigachat/", response_model=RecommendationResponse)
+async def chat_with_gigachat(user_message: str):
+    raw_payload = None
     try:
         top_k = max(1, min(query.top_k, 20))
         context_dishes = []
@@ -248,11 +283,20 @@ async def chat_with_gigachat(query: MenuQuery):
             {"role": "user", "content": query.user_message},
         ]
         response = GIGA_CLIENT.send_message(messages)
-        return {
-            "response": response["choices"][0]["message"]["content"],
-            "context_used": context_dishes,
-        }
+        raw_payload = response["choices"][0]["message"]["content"]
+        parsed_payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
+
+        validated_response = RawRecommendationResponse.model_validate(parsed_payload)
+        normalized_items = _normalize_recommendation_items(validated_response.items)
+        return RecommendationResponse(items=normalized_items)
+    except (json.JSONDecodeError, ValidationError):
+        logger.exception("Failed to parse recommendations from GigaChat. Raw response: %s", raw_payload)
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось обработать ответ рекомендательного сервиса"
+        ) from None
     except Exception as e:
+        logger.exception("Unexpected GigaChat error")
         raise HTTPException(status_code=500, detail=f"GigaChat error: {str(e)}")
 
 @app.post("/startflag/{table_number}", tags=["Сессии"])
